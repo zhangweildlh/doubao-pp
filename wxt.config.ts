@@ -1,9 +1,11 @@
 // Doubao-pp wxt 构建配置（融合方案 §4 / P0-4 精修版）
 //
 // 相对 Deepseek-pp 的 wxt.config.ts 做了豆包化裁剪：
-//   - host_permissions 改为豆包网页版域名
-//   - 移除 pyodide / skill 资源复制钩子（P0 阶段不移植 Python 沙箱与技能包）
-//   - 保留 asciiJavaScriptOutputPlugin（确保中文文案在打包后不被破坏）
+//   - host_permissions 仅声明豆包网页版域名。路线 A 下扩展不在后台直连豆包 API，
+//     所有 /chat/completion 请求由页面自身发出并自带 a_bogus/msToken 签名；
+//     故 host_permissions 仅为后续「后台直连」预留，当前保持最小化。
+//   - 移除 pyodide / skill 资源复制钩子（P0 阶段不移植 Python 沙箱与技能包）。
+//   - 保留 asciiJavaScriptOutputPlugin（确保中文文案在打包后不被破坏）。
 
 import { defineConfig, type ConfigEnv, type UserManifest } from 'wxt';
 import type { Plugin } from 'vite';
@@ -13,10 +15,12 @@ import { readFileSync } from 'node:fs';
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const extensionVersion = readPackageVersion();
+const CHROMIUM_BROWSERS = new Set(['chrome', 'edge']);
 
 const MANIFEST_NAME = 'Doubao-pp';
 const MANIFEST_DESCRIPTION =
   '为豆包网页版（doubao.com）提供记忆、技能与自动化能力的浏览器扩展（Deepseek-pp 移植）';
+const MANIFEST_ACTION_TITLE = 'Doubao-pp';
 
 function readPackageVersion(): string {
   const pkg = JSON.parse(readFileSync(resolve(rootDir, 'package.json'), 'utf8')) as {
@@ -28,7 +32,8 @@ function readPackageVersion(): string {
   return pkg.version;
 }
 
-export function createManifest(_env: ConfigEnv): UserManifest {
+export function createManifest(env: ConfigEnv): UserManifest {
+  const isChromiumTarget = CHROMIUM_BROWSERS.has(env.browser);
   return {
     name: MANIFEST_NAME,
     description: MANIFEST_DESCRIPTION,
@@ -39,6 +44,13 @@ export function createManifest(_env: ConfigEnv): UserManifest {
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },
+    ...(isChromiumTarget
+      ? {
+          action: {
+            default_title: MANIFEST_ACTION_TITLE,
+          },
+        }
+      : {}),
   };
 }
 
