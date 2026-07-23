@@ -2,6 +2,7 @@
 //
 // 监听 MAIN world content script 通过 chrome.runtime.sendMessage 发来的
 // 事件桥消息（__doubaoPpBridge: true），暂存最近 20 条供后续 popup/sidebar 消费。
+// 同时响应 popup 发来的 GET_BRIDGE_HISTORY / CLEAR_BRIDGE_HISTORY 请求。
 //
 // 注：defineBackground 由 wxt auto-import 提供，无需显式 import。
 
@@ -13,7 +14,25 @@ const MAX_BRIDGE_MESSAGES = 20;
 
 export default defineBackground(() => {
   chrome.runtime.onMessage.addListener(
-    (msg: Record<string, unknown>, _sender, _sendResponse) => {
+    (
+      msg: Record<string, unknown>,
+      _sender,
+      sendResponse: (response?: unknown) => void,
+    ) => {
+      // 处理 popup 请求：获取桥接历史记录
+      if (msg.type === 'GET_BRIDGE_HISTORY') {
+        // 返回暂存副本（浅拷贝），避免外部修改内部状态
+        sendResponse(bridgeMessages.slice());
+        return true;
+      }
+
+      // 处理 popup 请求：清空桥接历史记录
+      if (msg.type === 'CLEAR_BRIDGE_HISTORY') {
+        bridgeMessages.length = 0;
+        sendResponse({ ok: true });
+        return true;
+      }
+
       // 过滤非桥接消息（同时校验事件名，仅接受 BRIDGE_EVENT 类型）
       if (msg.__doubaoPpBridge !== true || msg.type !== BRIDGE_EVENT) return;
 
