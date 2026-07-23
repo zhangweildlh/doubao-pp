@@ -13,7 +13,7 @@ import {
   collectAssistantText,
   collectStreamingText,
 } from '../provider/doubao/stream-codec.ts';
-import { BRIDGE_EVENT, bridgeEmit } from '../provider/doubao/dom-hook.ts';
+import { bridgeEmit } from '../provider/doubao/dom-hook.ts';
 
 export interface RequestContext {
   requestId: string;
