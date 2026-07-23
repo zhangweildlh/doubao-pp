@@ -1,0 +1,19 @@
+# WorkBuddy 本地记忆（不进版本库）
+.workbuddy/
+
+# MiMo code 工具缓存目录（本地 CLI 安装，非项目产出物）
+.mimocode/
+
+# 依赖与构建产物
+node_modules/
+dist/
+.output/
+.wxt/
+
+# 豆包前端 chunk（第三方逆向参考，体积大、可重新抓取，不进版本库）
+analysis/capture/js/
+
+# 系统 / 编辑器噪声
+.DS_Store
+Thumbs.db
+*.log
