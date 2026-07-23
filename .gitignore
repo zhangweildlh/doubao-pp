@@ -9,6 +9,7 @@ node_modules/
 dist/
 .output/
 .wxt/
+ported/
 
 # 豆包前端 chunk（第三方逆向参考，体积大、可重新抓取，不进版本库）
 analysis/capture/js/
