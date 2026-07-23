@@ -19,6 +19,78 @@
 
 import type { ChatProvider, StreamEvent } from '../types.ts';
 
+/**
+ * patch_op 增量解析：将补丁操作应用到累积文本上。
+ *
+ * 补丁格式（从页面逆向观察）：
+ *   {
+ *     patch_object: "/content/..." | number,   // JSON 指针或数组索引定位
+ *     patch_type: "replace" | "insert" | "append",
+ *     patch_value: string                       // 替换/插入的文本内容
+ *   }
+ *
+ * 语义：
+ *   - replace: 根据 patch_object 定位已有片段，用 patch_value 替换
+ *   - insert:  根据 patch_object 定位插入点，将 patch_value 插入到该点之前
+ *   - append:  忽略 patch_object，将 patch_value 追加到文本末尾
+ *
+ * 对无法解析的 op 安全回退 baseText。
+ */
+export function applyPatchOp(op: unknown, baseText: string): string {
+  if (!op || typeof op !== 'object') return baseText;
+  const patch = op as {
+    patch_object?: unknown;
+    patch_type?: string;
+    patch_value?: string;
+  };
+
+  const patchType = patch.patch_type;
+  const patchValue = typeof patch.patch_value === 'string' ? patch.patch_value : '';
+
+  // append：直接追加到末尾
+  if (patchType === 'append') {
+    return baseText + patchValue;
+  }
+
+  // 尝试从 patch_object 提取定位偏移量
+  let offset = -1;
+  const po = patch.patch_object;
+
+  if (typeof po === 'number') {
+    // 数组索引直接作为偏移
+    offset = po;
+  } else if (typeof po === 'string' && po.startsWith('/')) {
+    // JSON 指针：提取最后一段作为整数索引（如 /content/1 → 1）
+    const segments = po.split('/').filter(Boolean);
+    const last = segments[segments.length - 1];
+    const n = Number(last);
+    if (!Number.isNaN(n)) {
+      offset = n;
+    }
+  }
+
+  // replace：用 patch_value 替换 baseText 中的对应片段
+  if (patchType === 'replace') {
+    if (offset >= 0 && offset < baseText.length) {
+      return baseText.slice(0, offset) + patchValue + baseText.slice(offset + patchValue.length);
+    }
+    // 无有效偏移时尝试尾部替换（页面实际行为常为追加式替换）
+    return baseText + patchValue;
+  }
+
+  // insert：在偏移位置之前插入 patch_value
+  if (patchType === 'insert') {
+    if (offset >= 0 && offset <= baseText.length) {
+      return baseText.slice(0, offset) + patchValue + baseText.slice(offset);
+    }
+    // 无效偏移则追加
+    return baseText + patchValue;
+  }
+
+  // 未知 patch_type → 安全回退
+  return baseText;
+}
+
 type RawEvent = { id: string | null; event: string | null; data: string[] };
 
 // 把原始 SSE 文本按空行分帧，逐事件解析为 {id, event, data(已尝试 JSON 解析)}
@@ -97,18 +169,37 @@ function firstTextBlockText(d: unknown): string | null {
   return null;
 }
 
-// 流式增量显示用：顺序拼接 STREAM_MSG_NOTIFY 首段 + 所有 CHUNK_DELTA.text。
-// 注意：此拼接用于"实时逐字显示"，不保证与最终完整文本逐字相等（前缀/补丁差异）。
+// 流式增量显示用：顺序拼接 STREAM_MSG_NOTIFY 首段 + 所有 CHUNK_DELTA.text，
+// 并对 STREAM_CHUNK 的 patch_op 做增量补丁（修复"缺失某字"的回退场景）。
+// 注意：此拼接用于"实时逐字显示"，不保证与最终完整文本逐字相等（前缀/补丁差异），
+// 但通过 patch_op 可以更接近 brief 的权威完整文本。
 export function collectStreamingText(events: StreamEvent[]): string {
   const parts: string[] = [];
+  let patchedText = ''; // 累积文本，供 patch_op 基于偏移操作
   for (const e of events) {
     if (!e.data || typeof e.data !== 'object') continue;
     if (e.event === 'STREAM_MSG_NOTIFY') {
       const t = firstTextBlockText(e.data);
-      if (t) parts.push(t);
+      if (t) {
+        patchedText = t;
+        parts.length = 0; // 重新初始化：STREAM_MSG_NOTIFY 提供基础文本
+        parts.push(t);
+      }
     } else if (e.event === 'CHUNK_DELTA') {
       const t = (e.data as { text?: string }).text;
-      if (typeof t === 'string') parts.push(t);
+      if (typeof t === 'string') {
+        patchedText += t;
+        parts.push(t);
+      }
+    } else if (e.event === 'STREAM_CHUNK') {
+      // STREAM_CHUNK 携带 patch_op：对已累积的文本做增量补丁
+      const chunkData = e.data as { patch_op?: unknown };
+      if (chunkData.patch_op) {
+        patchedText = applyPatchOp(chunkData.patch_op, patchedText);
+        // 补丁后重新生成 parts（清空再重建，确保一致性）
+        parts.length = 0;
+        parts.push(patchedText);
+      }
     }
   }
   return parts.join('');

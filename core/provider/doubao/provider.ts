@@ -30,8 +30,25 @@ export function createDoubaoProvider(): ChatProvider {
     },
 
     augmentCompletionRequest(body: unknown): unknown {
-      const r = augmentCompletionRequest(body, { marker: MEMORY_MARKER });
-      return r.body;
+      // 防御校验 G1：body 必须是非空对象且含 messages 数组，否则跳过增强
+      if (
+        !body ||
+        typeof body !== 'object' ||
+        Array.isArray(body) ||
+        !('messages' in body) ||
+        !Array.isArray((body as Record<string, unknown>).messages)
+      ) {
+        return body;
+      }
+
+      // 用 try-catch 包裹增强逻辑，异常时退回原请求体，绝不向上抛出
+      try {
+        const r = augmentCompletionRequest(body, { marker: MEMORY_MARKER });
+        return r.body;
+      } catch (err) {
+        console.error('[Doubao-pp] 增强失败，退回原请求', err);
+        return body;
+      }
     },
 
     parseSSEStream(resp: Response): AsyncGenerator<StreamEvent> {

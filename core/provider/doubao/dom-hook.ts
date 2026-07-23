@@ -40,6 +40,17 @@ export function bridgeEmit(payload: unknown): void {
   if (w.dispatchEvent) {
     w.dispatchEvent(new CustomEvent(BRIDGE_EVENT, { detail: payload }));
   }
+  // 跨执行环境桥接：MAIN world → background service worker
+  // chrome.runtime.sendMessage 在普通网页上下文会抛异常，用可选链 + try-catch 屏蔽
+  try {
+    (globalThis as any).chrome?.runtime?.sendMessage({
+      __doubaoPpBridge: true,
+      type: BRIDGE_EVENT,
+      detail: payload,
+    });
+  } catch {
+    // 非扩展上下文（普通网页），静默忽略
+  }
 }
 
 export { DOUBAO_SELECTORS };
