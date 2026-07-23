@@ -7,7 +7,7 @@
 
 import { installFetchHook } from '../core/interceptor/fetch-hook.ts';
 import type { RequestContext } from '../core/interceptor/fetch-hook.ts';
-import { getActiveProvider } from '../provider/active.ts';
+import { getActiveProvider } from '../core/provider/active.ts';
 
 export default defineContentScript({
   matches: ['*://www.doubao.com/chat/*'],
