@@ -97,3 +97,48 @@ describe('MemoryStore（chrome.storage.local 后端桩）', () => {
 afterAll(() => {
   delete (globalThis as any).chrome;
 });
+
+describe('MemoryStore 新方法（getById / update / remove）', () => {
+  it('getById 命中已存在条目', async () => {
+    const store = new MemoryStore(createMemoryBackend());
+    await store.append(makeEntry({ id: 'hit', assistantText: '命中' }));
+    const found = await store.getById('hit');
+    expect(found).toBeDefined();
+    expect(found!.assistantText).toBe('命中');
+  });
+
+  it('getById 未命中返回 undefined', async () => {
+    const store = new MemoryStore(createMemoryBackend());
+    await store.append(makeEntry({ id: 'a' }));
+    expect(await store.getById('nope')).toBeUndefined();
+  });
+
+  it('update 改字段并刷新 updatedAt，但 createdAt/id 不被改写', async () => {
+    const store = new MemoryStore(createMemoryBackend());
+    await store.append(makeEntry({ id: 'u', assistantText: '旧', createdAt: 1000 }));
+    const list = await store.update('u', { assistantText: '新' });
+    expect(list.length).toBe(1);
+    expect(list[0].assistantText).toBe('新');
+    expect(list[0].createdAt).toBe(1000); // 最早创建时间锁定
+    expect(list[0].updatedAt).toBeGreaterThanOrEqual(1000);
+    // 对不存在的 id 更新为 no-op，返回原列表
+    const same = await store.update('ghost', { assistantText: 'x' });
+    expect(same).toEqual(list);
+  });
+
+  it('remove 删除后 getAll 不含该条', async () => {
+    const store = new MemoryStore(createMemoryBackend());
+    await store.append(makeEntry({ id: 'keep' }));
+    await store.append(makeEntry({ id: 'drop' }));
+    const all = await store.getAll();
+    const dropId = all.find((e) => e.id === 'drop')!.id;
+    const after = await store.remove(dropId);
+    expect(after.find((e) => e.id === 'drop')).toBeUndefined();
+    expect(after.find((e) => e.id === 'keep')).toBeDefined();
+    expect(after.length).toBe(1);
+    expect((await store.getAll()).find((e) => e.id === 'drop')).toBeUndefined();
+    // 对不存在的 id 删除为 no-op
+    const again = await store.remove('ghost');
+    expect(again.length).toBe(1);
+  });
+});

@@ -99,6 +99,43 @@ export class MemoryStore {
     return trimmed;
   }
 
+  /** 按 id 精确读取单条；不存在返回 undefined */
+  async getById(id: string): Promise<MemoryEntry | undefined> {
+    const list = await this.getAll();
+    return list.find((e) => e.id === id);
+  }
+
+  /**
+   * 局部更新某条记忆的字段（如 assistantText / 元信息）。
+   *   - 目标 id 不存在 → 返回原列表，无副作用
+   *   - 存在 → 合并 patch，刷新 updatedAt；id 与 createdAt 不可被 patch 改写
+   * 返回更新后的全量列表
+   */
+  async update(id: string, patch: Partial<Omit<MemoryEntry, 'id' | 'createdAt'>>): Promise<MemoryEntry[]> {
+    const list = await this.getAll();
+    const idx = list.findIndex((e) => e.id === id);
+    if (idx < 0) return list;
+    const now = Date.now();
+    list[idx] = {
+      ...list[idx],
+      ...patch,
+      id: list[idx].id, // id 锁定
+      createdAt: list[idx].createdAt, // createdAt 锁定
+      updatedAt: now,
+    };
+    await this.backend.set(STORAGE_KEY, list);
+    return list;
+  }
+
+  /** 按 id 删除一条记忆；不存在则 no-op，返回原列表 */
+  async remove(id: string): Promise<MemoryEntry[]> {
+    const list = await this.getAll();
+    const filtered = list.filter((e) => e.id !== id);
+    if (filtered.length === list.length) return list; // 无变化
+    await this.backend.set(STORAGE_KEY, filtered);
+    return filtered;
+  }
+
   /** 清空全部记忆 */
   async clear(): Promise<void> {
     await this.backend.set(STORAGE_KEY, []);
