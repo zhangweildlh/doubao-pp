@@ -32,3 +32,8 @@
 ### 已知待办（非阻塞）
 - 真机人工验收（登录豆包逐项验证记忆注入 / SSE 回显 / 浮窗多轮 / 技能+MCP+云同步）需用户在网络通畅的真实浏览器完成。
 - 可选健壮兜底：`applyPatchOp` 增量累积、可选 MCP 实际传输（路线 B）。
+
+### CI / 远端编译（参考 Deepseek-pp 方案补齐）
+- `ci.yml`：PR / `main` 推送 / `workflow_dispatch` 触发；`contents: read`；并发取消；跑 `compile` + `test` + `build:chrome` 并上传 `dist/chrome-mv3` 产物。
+- `release.yml`（新建）：`v*` 标签推送 / `workflow_dispatch(tag)` 触发；`contents: write`；校验 tag 与 HEAD 一致 → `compile`+`test` → `zip:chrome`/`zip:edge`/`zip:firefox` → `gh release create` 把各浏览器 zip 挂到 GitHub Release（**不发布到应用商店**）。
+- 参考 `D:\Documents\AI_Work_Temp\Deepseek-pp\.github\workflows\ci.yml` 与 `release.yml`；其 `scripts/*.mjs` 为功能级冒烟测试（拉起原生 host 测 MCP 工具），与 doubao-pp 的 wxt 构建级远端编译不同类，未照搬。
