@@ -23,9 +23,6 @@ export default defineContentScript({
       onConversationReady(meta, ctx: RequestContext) {
         console.debug('[Doubao-pp] 会话就绪', ctx.requestId, meta.conversationId);
       },
-      onStreamingText(text, ctx: RequestContext) {
-        console.debug('[Doubao-pp] 流式文本', ctx.requestId, text.slice(0, 40));
-      },
       onAssistantText(text, ctx: RequestContext) {
         console.debug('[Doubao-pp] 定稿文本', ctx.requestId, text.slice(0, 40));
       },

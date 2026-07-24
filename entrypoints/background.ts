@@ -62,6 +62,9 @@ function handleBridgeDetail(detail: Record<string, unknown>): void {
     const reqId = detail.requestId as string | undefined;
     const text = typeof detail.text === 'string' ? detail.text : '';
     const meta = (reqId && pendingConv.get(reqId)) || null;
+    // 关联优先用 pendingConv（CONVERSATION_READY 与 ASSISTANT_TEXT 同 reqId 配对，稳定去重）；
+    // lastConversationId 仅作异常兜底（reqId 不匹配时）。正常流程不触发兜底，
+    // 并发对话流理论上有串号风险，但 fetch-hook 保证 READY/定稿文本同 reqId 配对，实际不触发。
     const conversationId = meta?.conversationId ?? lastConversationId;
     const entry: MemoryEntry = {
       id: conversationId ?? reqId ?? `anon-${Date.now()}`,

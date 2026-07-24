@@ -57,6 +57,7 @@ export function shouldProcessMessage(el: Element): boolean {
 
 let domStarted = false;
 let authStarted = false;
+let domObserver: MutationObserver | null = null;
 const emitted = new WeakSet<Element>();
 
 export interface DomReadyPayload {
@@ -100,7 +101,7 @@ export function startDomObserver(): void {
   // 监听文档变动：元素新增（childList）或文本流式增长（characterData）均触发扫描。
   // 用 querySelectorAll 全量扫描 + WeakSet 去重，既覆盖"流式追加文本后才有内容"的场景，
   // 又避免同一条消息重复广播（高频 STREAMING 文本不刷屏）。
-  const observer = new MutationObserver(() => {
+  domObserver = new MutationObserver(() => {
     const els = document.querySelectorAll(DOUBAO_SELECTORS.assistantMessage);
     els.forEach((el: Element) => {
       if (emitted.has(el)) return;
@@ -116,7 +117,7 @@ export function startDomObserver(): void {
       bridgeEmit(payload);
     });
   });
-  observer.observe(document.documentElement, {
+  domObserver.observe(document.documentElement, {
     childList: true,
     subtree: true,
     characterData: true,
@@ -131,8 +132,20 @@ export function startAuthWatcher(): void {
 
   const cookie = document.cookie ?? '';
   const auth = readPageAuth(cookie);
-  // 软门禁：msToken 或 sessionid 任一可读即视为已登录；fail-open 由 auth-state 默认保证
-  setAuthed(auth.hasMsToken || auth.hasSessionCookie);
+  // 软门禁（fail-open 保持）：仅当检测到明确登录信号时才确保 authed=true；
+  // 未检测到时保持现状（auth-state 默认 true），绝不强行置 false。
+  // 否则一旦首屏 cookie 时序不佳（document_start 早于登录态写入），会把"未确认"
+  // 误判为"未登录"，静默禁用整个会话的记忆注入。
+  if (auth.hasMsToken || auth.hasSessionCookie) setAuthed(true);
   const payload: AuthStatusPayload = { type: 'AUTH_STATUS', auth };
   bridgeEmit(payload);
+}
+
+// 测试钩子：重置单例标志（仅测试用，生产路径不调用）。
+// startDomObserver/startAuthWatcher 以单例防重装，测试需在每个用例前重置以独立验证。
+export function __resetWatchersForTest(): void {
+  domObserver?.disconnect();
+  domObserver = null;
+  domStarted = false;
+  authStarted = false;
 }

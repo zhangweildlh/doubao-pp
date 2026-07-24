@@ -64,6 +64,9 @@ export function createDoubaoProvider(): ChatProvider {
     buildSessionUrl,
 
     selectors: DOUBAO_SELECTORS,
+    // 注：uiFrameworkGlobal 仅作契约占位；实际框架检测由 dom-observer 经
+    // dom-hook.getUIFrameworkName() 用 UI_FRAMEWORK_CANDIDATES 软检测列表完成
+    // （真机验收确认 DoubaoUIFramework 在豆包网页版不存在，故取候选[0]仅为契约示意）。
     uiFrameworkGlobal: UI_FRAMEWORK_CANDIDATES[0],
   };
 }

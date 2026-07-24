@@ -1,10 +1,11 @@
 // @vitest-environment jsdom
 // DOM 钩子 + auth 真实接线集成测试（jsdom 模拟豆包页面，选择器以真机验收 2026-07-24 为准）
-import { describe, it, expect, afterAll } from 'vitest';
+import { describe, it, expect, afterAll, afterEach } from 'vitest';
 import { BRIDGE_EVENT } from '../core/provider/doubao/dom-hook.ts';
 import {
   startDomObserver,
   startAuthWatcher,
+  __resetWatchersForTest,
   extractAssistantText,
   shouldProcessMessage,
   isAssistantMessage,
@@ -21,6 +22,7 @@ function attachCollector(): any[] {
 const tick = (ms = 10) => new Promise((r) => setTimeout(r, ms));
 
 afterAll(() => {
+  __resetWatchersForTest(); // 断开 MutationObserver，避免 jsdom teardown 后回调访问已销毁 document
   delete (globalThis as any).chrome;
   delete (globalThis as any).React;
   delete (globalThis as any).DoubaoUIFramework;
@@ -67,6 +69,11 @@ describe('dom-observer 真实接线（真机 DOM 结构 2026-07-24）', () => {
 });
 
 describe('auth-watcher 真实接线', () => {
+  afterEach(() => {
+    __resetWatchersForTest();
+    setAuthed(true);
+  });
+
   it('读取 document.cookie 广播 AUTH_STATUS 并置门禁', async () => {
     // jsdom 默认 url 为 about:blank，cookie 不可靠；直接定义 cookie getter 供 readPageAuth 读取
     const protoDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie');
@@ -85,6 +92,25 @@ describe('auth-watcher 真实接线', () => {
     const auth = events.find((e) => e?.type === 'AUTH_STATUS');
     expect(auth).toBeTruthy();
     expect(auth.auth.hasMsToken).toBe(true);
+    expect(isAuthed()).toBe(true);
+  });
+
+  it('无登录信号（cookie 无 mstoken/sessionid）时保持 fail-open（isAuthed 仍为 true）', async () => {
+    setAuthed(true); // 模拟 fail-open 默认
+    const protoDesc = Object.getOwnPropertyDescriptor(Document.prototype, 'cookie');
+    Object.defineProperty(document, 'cookie', {
+      get: () => '', // 空 cookie，无任何登录信号
+      configurable: true,
+    });
+
+    startAuthWatcher();
+    await tick(0);
+
+    if (protoDesc) Object.defineProperty(document, 'cookie', protoDesc);
+    else delete (document as any).cookie;
+
+    // 关键回归：未检测到信号时绝不应把门禁置为 false；否则首屏 cookie 时序不佳会
+    // 静默禁用整个会话的记忆注入（D1 修复点）。
     expect(isAuthed()).toBe(true);
   });
 });
