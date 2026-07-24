@@ -43,9 +43,15 @@ describe('background 桥接消息处理（集成）', () => {
   });
 
   it('桥接消息暂存上限 20 条，超出移除最早一条', () => {
+    // 用合法的 BridgeDetail（STREAMING_TEXT）：background 对该类型有意跳过 console 日志，
+    // 但仍会进入暂存队列，从而既验证上限、又避免测试期控制台刷屏噪声。
     for (let i = 0; i < 25; i++) {
       registerListener(
-        { __doubaoPpBridge: true, type: BRIDGE_EVENT, detail: { text: 'm' + i } },
+        {
+          __doubaoPpBridge: true,
+          type: BRIDGE_EVENT,
+          detail: { type: 'STREAMING_TEXT', requestId: 'r', text: 'm' + i },
+        },
         {},
         () => {},
       );
