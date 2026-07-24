@@ -87,3 +87,6 @@ function init(): void {
 
 // popup HTML 加载后 DOM 已就绪，直接初始化
 init();
+
+// 模块标记：使本文件可被测试以 import 方式加载（不影响 wxt 将其构建为脚本入口）
+export {};
