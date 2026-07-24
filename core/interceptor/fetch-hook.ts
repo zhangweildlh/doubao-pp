@@ -149,5 +149,7 @@ async function consumeStream(
 }
 
 function makeRequestId(url: string): string {
-  return `${Date.now()}-${url.slice(-16)}`;
+  // 加入随机分量，避免同一毫秒内同端点两次请求生成相同 requestId，
+  // 否则会破坏 CONVERSATION_READY↔ASSISTANT_TEXT 的关联（记忆写错会话）
+  return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}-${url.slice(-16)}`;
 }

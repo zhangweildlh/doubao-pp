@@ -2,7 +2,7 @@
 //
 // 覆盖：内存后端 append/去重/上限/clear/脏数据，以及 chrome.storage.local 后端桩往返。
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterAll } from 'vitest';
 import {
   MemoryStore,
   createMemoryBackend,
@@ -91,4 +91,9 @@ describe('MemoryStore（chrome.storage.local 后端桩）', () => {
     // 清理全局桩，避免污染其它测试文件
     delete (globalThis as any).chrome;
   });
+});
+
+// 兜底清理全局桩（chrome 后端测试已局部删除，此处保证无残留）
+afterAll(() => {
+  delete (globalThis as any).chrome;
 });

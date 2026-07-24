@@ -4,7 +4,7 @@
 // 验证桥接消息的暂存上限、GET/CLEAR 响应、非桥接消息过滤。
 // 不改动生产代码，仅用全局桩在测试期捕获 background 注册的监听器。
 
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { BRIDGE_EVENT } from '../core/provider/doubao/dom-hook.ts';
 
 describe('background 桥接消息处理（集成）', () => {
@@ -27,6 +27,12 @@ describe('background 桥接消息处理（集成）', () => {
     // 必须在桩之后动态导入，否则模块顶层 defineBackground(...) 会因未定义而抛错
     await import('../entrypoints/background.ts');
     registerListener = listeners[0];
+  });
+
+  // 清理全局桩，避免 globalThis.chrome 跨文件污染
+  afterAll(() => {
+    delete (globalThis as any).chrome;
+    delete (globalThis as any).defineBackground;
   });
 
   it('GET_BRIDGE_HISTORY 初态返回空数组且返回 true（保持消息通道）', () => {

@@ -19,6 +19,9 @@ import {
 // 模块级消息缓存，最多保留最近 20 条（调试用桥接历史）
 const bridgeMessages: Array<{ type: string; detail: unknown; receivedAt: number }> = [];
 const MAX_BRIDGE_MESSAGES = 20;
+// pendingConv 上限：CONVERSATION_READY 仅在 ASSISTANT_TEXT 到达时删除，
+// 若请求异常未到达则长期驻留；设上限防无限增长（淘汰最旧仅丢失回退元信息，不崩溃）
+const MAX_PENDING = 64;
 
 // 记忆存储（真机后端：chrome.storage.local）
 const memory = new MemoryStore(chromeStorageBackend);
@@ -43,7 +46,13 @@ function handleBridgeDetail(detail: Record<string, unknown>): void {
       sectionId: (detail.sectionId as string | null) ?? null,
       sessionUrl: (detail.sessionUrl as string | null) ?? null,
     };
-    if (reqId) pendingConv.set(reqId, meta);
+    if (reqId) {
+      pendingConv.set(reqId, meta);
+      if (pendingConv.size > MAX_PENDING) {
+        const oldest = pendingConv.keys().next().value;
+        if (oldest !== undefined) pendingConv.delete(oldest);
+      }
+    }
     if (meta.conversationId) lastConversationId = meta.conversationId;
     return;
   }
@@ -63,13 +72,19 @@ function handleBridgeDetail(detail: Record<string, unknown>): void {
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-    // 记忆写入为异步且不需要回包，fire-and-forget；真机验收阶段需关注 SW 存活窗口
-    void memory.append(entry);
+    // 记忆写入为异步且不需要回包；捕获异常避免未处理的 promise 拒绝
+    memory.append(entry).catch((err) => {
+      console.error('[Doubao-pp] 记忆写入失败', err);
+    });
     if (reqId) pendingConv.delete(reqId);
     return;
   }
 
   // 其他桥接事件（REQUEST_AUGMENTED / STREAMING_TEXT / ERROR）仅暂存供调试
+  // STREAMING_TEXT 为高频逐字事件，跳过 console 以免刷屏；其余低频事件记录便于排障
+  if (detail.type !== 'STREAMING_TEXT') {
+    console.info('[Doubao-pp][bridge]', detail.type, detail);
+  }
   bridgeMessages.push({
     type: BRIDGE_EVENT,
     detail,
@@ -100,11 +115,12 @@ export default defineBackground(() => {
 
       // —— popup 请求：记忆 ——
       if (msg.type === 'GET_MEMORY') {
-        memory.getAll().then(sendResponse);
+        // 捕获异常并回空数组，避免消息通道因拒绝而挂起
+        memory.getAll().then(sendResponse).catch(() => sendResponse([]));
         return true; // 保持消息通道以异步回包
       }
       if (msg.type === 'CLEAR_MEMORY') {
-        memory.clear().then(() => sendResponse({ ok: true }));
+        memory.clear().then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
         return true;
       }
 
@@ -112,7 +128,6 @@ export default defineBackground(() => {
       if (msg.__doubaoPpBridge !== true || msg.type !== BRIDGE_EVENT) return;
 
       const detail = (msg.detail ?? {}) as Record<string, unknown>;
-      console.info('[Doubao-pp][bridge]', detail.type, detail);
       handleBridgeDetail(detail);
     },
   );

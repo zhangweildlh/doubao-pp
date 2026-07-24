@@ -7,7 +7,7 @@
 //   - 激活「记忆」标签触发 GET_MEMORY 并倒序渲染条目
 //   - 「清空记忆」按钮触发 CLEAR_MEMORY
 
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 
 describe('popup 记忆标签页（集成）', () => {
   let sendMessage: ReturnType<typeof vi.fn>;
@@ -48,6 +48,11 @@ describe('popup 记忆标签页（集成）', () => {
     });
     (globalThis as any).chrome = { runtime: { sendMessage } };
     await import('../entrypoints/popup/main.ts');
+  });
+
+  // 清理全局桩，避免 globalThis.chrome 跨文件污染
+  afterAll(() => {
+    delete (globalThis as any).chrome;
   });
 
   it('默认渲染桥接历史标签与清空按钮（兼容旧测试）', () => {

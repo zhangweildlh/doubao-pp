@@ -4,7 +4,7 @@
 // 验证 CONVERSATION_READY + ASSISTANT_TEXT 经 requestId 关联后持久化为记忆条目，
 // 同会话去重更新，以及 GET_MEMORY / CLEAR_MEMORY 响应。
 
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { BRIDGE_EVENT } from '../core/provider/doubao/dom-hook.ts';
 
 describe('background 记忆持久化（集成）', () => {
@@ -28,6 +28,12 @@ describe('background 记忆持久化（集成）', () => {
     (globalThis as any).defineBackground = (cb: any) => cb({});
     await import('../entrypoints/background.ts');
     registerListener = listeners[0];
+  });
+
+  // 清理全局桩，避免 globalThis.chrome / defineBackground 跨文件污染
+  afterAll(() => {
+    delete (globalThis as any).chrome;
+    delete (globalThis as any).defineBackground;
   });
 
   const flush = () => new Promise((r) => setTimeout(r, 0));
@@ -117,5 +123,60 @@ describe('background 记忆持久化（集成）', () => {
     registerListener({ type: 'GET_MEMORY' }, {}, get);
     await flush();
     expect(get.mock.calls[0][0]).toEqual([]);
+  });
+
+  it('CONVERSATION_READY 后无 ASSISTANT_TEXT 不崩溃（pending 上限保护）', async () => {
+    // 制造大量「孤儿」CONVERSATION_READY（无对应 ASSISTANT_TEXT），触发 pending 上限淘汰路径
+    for (let i = 0; i < 70; i++) {
+      registerListener(
+        {
+          __doubaoPpBridge: true,
+          type: BRIDGE_EVENT,
+          detail: {
+            type: 'CONVERSATION_READY',
+            requestId: 'orphan' + i,
+            conversationId: 'o' + i,
+          },
+        },
+        {},
+        () => {},
+      );
+    }
+    // 随后一个正常关联对仍应正常持久化（验证上限淘汰不破坏主路径）
+    registerListener(
+      {
+        __doubaoPpBridge: true,
+        type: BRIDGE_EVENT,
+        detail: { type: 'CONVERSATION_READY', requestId: 'rX', conversationId: 'cX' },
+      },
+      {},
+      () => {},
+    );
+    registerListener(
+      {
+        __doubaoPpBridge: true,
+        type: BRIDGE_EVENT,
+        detail: { type: 'ASSISTANT_TEXT', requestId: 'rX', text: 'X' },
+      },
+      {},
+      () => {},
+    );
+    await flush();
+    const sr = vi.fn();
+    registerListener({ type: 'GET_MEMORY' }, {}, sr);
+    await flush();
+    const entries = sr.mock.calls[0][0] as Array<{ conversationId: string; assistantText: string }>;
+    expect(entries.some((e) => e.conversationId === 'cX' && e.assistantText === 'X')).toBe(true);
+  });
+
+  it('GET_MEMORY 在存储异常时回空数组而非挂起', async () => {
+    // 让 storage.get 抛错，验证 .catch 兜底回包 []
+    (globalThis as any).chrome.storage.local.get = async () => {
+      throw new Error('boom');
+    };
+    const sr = vi.fn();
+    registerListener({ type: 'GET_MEMORY' }, {}, sr);
+    await flush();
+    expect(sr).toHaveBeenCalledWith([]);
   });
 });

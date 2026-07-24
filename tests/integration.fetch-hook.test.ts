@@ -6,7 +6,7 @@
 //   3) 非 completion 路由直接放行、不增强
 // 不需要真实浏览器；SSE 流用空 Response 模拟，避免触发完整解析链路。
 
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { installFetchHook } from '../core/interceptor/fetch-hook.ts';
 
 describe('fetch-hook 拦截契约（集成）', () => {
@@ -22,6 +22,12 @@ describe('fetch-hook 拦截契约（集成）', () => {
       return new (globalThis as any).Response('', { status: 200 });
     });
     (globalThis as any).window = { fetch: realFetch };
+  });
+
+  // 清理全局桩，避免 globalThis.chrome / window 跨文件污染
+  afterAll(() => {
+    delete (globalThis as any).chrome;
+    delete (globalThis as any).window;
   });
 
   it('installFetchHook 仅安装一次（单例防重装）', () => {
@@ -60,5 +66,28 @@ describe('fetch-hook 拦截契约（集成）', () => {
     expect(fetchCalls).toBe(before + 1);
     const parsed = JSON.parse(capturedBody as string);
     expect(parsed.messages[0].content_block[0].content.text_block.text).toBe('x');
+  });
+
+  it('并发 completion 请求产生不同 requestId（关联不串话）', async () => {
+    const sendMessage = (globalThis as any).chrome.runtime.sendMessage as ReturnType<typeof vi.fn>;
+    sendMessage.mockClear();
+    const body = {
+      messages: [{ content_block: [{ content: { text_block: { text: 'x' } } }] }],
+    };
+    await Promise.all([
+      (globalThis as any).window.fetch('https://www.doubao.com/chat/completion', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+      (globalThis as any).window.fetch('https://www.doubao.com/chat/completion', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    ]);
+    const reqIds = sendMessage.mock.calls
+      .filter((c: any[]) => c[0]?.detail?.type === 'REQUEST_AUGMENTED')
+      .map((c: any[]) => (c[0] as any).detail.requestId as string);
+    expect(reqIds.length).toBeGreaterThanOrEqual(2);
+    expect(new Set(reqIds).size).toBe(reqIds.length); // 全部唯一，关联不串话
   });
 });

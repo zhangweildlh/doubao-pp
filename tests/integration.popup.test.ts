@@ -5,7 +5,7 @@
 // 在导入前构造 #app 容器、桩接 chrome.runtime.sendMessage，
 // 验证 init() 渲染标题/清空按钮、拉取历史渲染列表、点击清空触发 CLEAR。
 
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 
 describe('popup 桥接历史查看器（集成）', () => {
   let sendMessage: ReturnType<typeof vi.fn>;
@@ -23,6 +23,11 @@ describe('popup 桥接历史查看器（集成）', () => {
     (globalThis as any).chrome = { runtime: { sendMessage } };
     // 必须在 DOM 与 chrome 桩就位后动态导入（main.ts 顶层即 init()）
     await import('../entrypoints/popup/main.ts');
+  });
+
+  // 清理全局桩，避免 globalThis.chrome 跨文件污染
+  afterAll(() => {
+    delete (globalThis as any).chrome;
   });
 
   it('初始化渲染标题与清空按钮', () => {
