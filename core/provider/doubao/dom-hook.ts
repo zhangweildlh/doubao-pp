@@ -58,6 +58,23 @@ export function createEmptyRequestCache() {
 //        MAIN world 无 chrome.runtime，详见 entrypoints/relay.content.ts）
 export const RELAY_MESSAGE = '__doubaoPpRelay';
 
+// 桥接事件载荷类型：MAIN world（fetch-hook）→ 页内浮窗 / background 共享协议
+export type BridgeDetail =
+  | { type: 'REQUEST_AUGMENTED'; requestId: string }
+  | {
+      type: 'CONVERSATION_READY';
+      requestId: string;
+      conversationId: string | null;
+      sectionId: string | null;
+      sessionUrl: string | null;
+    }
+  | { type: 'STREAMING_TEXT'; requestId: string; text: string }
+  | { type: 'ASSISTANT_TEXT'; requestId: string; text: string }
+  | { type: 'ERROR'; message: string };
+
+// 注：完整桥接接受 unknown（dom-observer 还会下发 DOM_READY / PAGE_MESSAGE /
+// AUTH_STATUS 等载荷，背景仅按 detail 透存，不强约束）；精准的 BridgeDetail 类型
+// 仅用于 bridgeEmitPage（高频流式）与浮窗归约器，保证消费端类型安全。
 export function bridgeEmit(payload: unknown): void {
   const w = globalThis as any;
   // 1) 页面内 CustomEvent（MAIN world / 验证脚本消费）
@@ -84,6 +101,22 @@ export function bridgeEmit(payload: unknown): void {
     } catch {
       /* 非扩展上下文，静默忽略 */
     }
+  }
+}
+
+// 仅页内 CustomEvent 桥接（不进 background）：供高频流式事件（STREAMING_TEXT）使用，
+// 避免每字 chunk 都触发 chrome.runtime.sendMessage / postMessage 中继，淹没消息通道。
+// ISOLATED world 浮窗仍以 window CustomEvent 监听消费（DOM 事件跨 realm 共享，
+// MAIN world 派发的 CustomEvent 可被隔离世界内容脚本的监听器接收）。
+export function bridgeEmitPage(payload: BridgeDetail): void {
+  // 优先使用 window（真实浏览器 / jsdom 下存在），确保 CustomEvent 派发到页面 window，
+  // 被 ISOLATED world 浮窗的 window 监听器接收；Node 无 window 时回退 globalThis。
+  const w = (typeof window !== 'undefined' ? window : globalThis) as any;
+  if (!w.dispatchEvent) return;
+  try {
+    w.dispatchEvent(new CustomEvent(BRIDGE_EVENT, { detail: payload }));
+  } catch {
+    /* 非扩展 / 异常环境，静默忽略 */
   }
 }
 

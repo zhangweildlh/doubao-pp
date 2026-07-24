@@ -29,6 +29,7 @@ export interface StorageBackend {
 }
 
 const STORAGE_KEY = 'doubao_pp_memory_v1';
+export const MEMORY_STORAGE_KEY = STORAGE_KEY;
 const MAX_ENTRIES = 100;
 
 /** 真机后端：chrome.storage.local（MV3 持久化） */

@@ -13,7 +13,7 @@ import {
   collectAssistantText,
   collectStreamingText,
 } from '../provider/doubao/stream-codec.ts';
-import { bridgeEmit } from '../provider/doubao/dom-hook.ts';
+import { bridgeEmit, bridgeEmitPage } from '../provider/doubao/dom-hook.ts';
 
 export interface RequestContext {
   requestId: string;
@@ -124,20 +124,21 @@ async function consumeStream(
   callbacks: FetchHookCallbacks,
 ): Promise<void> {
   const events: StreamEvent[] = [];
+  // 解析循环内逐字实时派发：每收到一个事件即重算累计流式文本，
+  // 经 bridgeEmitPage（仅页内 CustomEvent，不进 background）下发，供浮窗实时回显。
   for await (const ev of provider.parseSSEStream(response)) {
     events.push(ev);
+    const streaming = collectStreamingText(events);
+    if (streaming.length > 0) {
+      callbacks.onStreamingText?.(streaming, ctx);
+      bridgeEmitPage({ type: 'STREAMING_TEXT', text: streaming, requestId: ctx.requestId });
+    }
   }
 
   const meta = extractConversationMeta(events, provider, ctx.url);
   if (meta.conversationId) {
     callbacks.onConversationReady?.(meta, ctx);
     bridgeEmit({ type: 'CONVERSATION_READY', ...meta, requestId: ctx.requestId });
-  }
-
-  // 流式逐字文本：仅用于实时显示，不保证与定稿逐字相等
-  const streaming = collectStreamingText(events);
-  if (streaming.length > 0) {
-    callbacks.onStreamingText?.(streaming, ctx);
   }
 
   // 定稿文本：权威 brief（缺失时回退流式拼接），用于记忆/上下文存储
