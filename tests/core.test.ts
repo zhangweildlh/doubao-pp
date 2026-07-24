@@ -1,10 +1,9 @@
-// Doubao-pp 核心逻辑单元测试（P2-1 补充，作为"无 BUG"回归门禁）
+// Doubao-pp 核心逻辑单元测试（P2-1 补充 + 偏差修复回归门禁）
 //
-// 覆盖 P1 关键修复点：
-//   - applyPatchOp（append/replace/insert/未知 op/空 op 安全回退）
-//   - extractBrief / collectAssistantText（brief 优先，缺 brief 回退流式）
-//   - collectStreamingText（CHUNK_DELTA 拼接 + STREAM_CHUNK patch_op 补丁）
-//   - augmentCompletionRequest（标记注入 / 幂等 / 非法 body 退回 / 不污染原 body）
+// 覆盖：
+//   P1 关键修复：applyPatchOp / extractBrief / collectAssistantText / collectStreamingText / augmentCompletionRequest
+//   P2 未接线函数冒烟：chat-session 解析 / dom-hook（P2-a/b/d）/ auth 登录态读取
+//   BUG 修复回归：resolveChatSessionId 不得误匹配 /chat/completion
 
 import { describe, it, expect } from 'vitest';
 import {
@@ -14,6 +13,14 @@ import {
   extractBrief,
 } from '../core/provider/doubao/stream-codec.ts';
 import { augmentCompletionRequest } from '../core/provider/doubao/request-aug.ts';
+import { resolveChatSessionId, buildSessionUrl } from '../core/provider/doubao/chat-session.ts';
+import {
+  getUIFramework,
+  isVisibleMessage,
+  createEmptyRequestCache,
+  BRIDGE_EVENT,
+} from '../core/provider/doubao/dom-hook.ts';
+import { readPageAuth } from '../core/provider/doubao/auth.ts';
 
 describe('applyPatchOp', () => {
   it('append 追加到末尾', () => {
@@ -100,5 +107,56 @@ describe('augmentCompletionRequest（记忆注入）', () => {
     const r = augmentCompletionRequest(body, opts);
     expect(body.messages[0].content_block[0].content.text_block.text).toBe('你好');
     expect((r.body as any).messages[0].content_block[0].content.text_block.text).toBe('[M]你好');
+  });
+});
+
+describe('resolveChatSessionId / buildSessionUrl（BUG 修复回归）', () => {
+  it('从真实会话页 URL 解析 id', () => {
+    expect(resolveChatSessionId('https://www.doubao.com/chat/abc123xyz')).toBe('abc123xyz');
+  });
+  it('对 /chat/completion 端点返回 null（修复误匹配）', () => {
+    expect(resolveChatSessionId('https://www.doubao.com/chat/completion')).toBeNull();
+    expect(resolveChatSessionId('https://www.doubao.com/chat/completion?x=1')).toBeNull();
+  });
+  it('无关 URL 返回 null', () => {
+    expect(resolveChatSessionId('https://www.doubao.com/')).toBeNull();
+    expect(resolveChatSessionId('https://www.doubao.com/chat/')).toBeNull();
+  });
+  it('buildSessionUrl 拼出正确 URL', () => {
+    expect(buildSessionUrl('abc123')).toBe('https://www.doubao.com/chat/abc123');
+  });
+});
+
+describe('dom-hook 导出冒烟（P2 未接线函数守护）', () => {
+  it('BRIDGE_EVENT 事件名已定义', () => {
+    expect(typeof BRIDGE_EVENT).toBe('string');
+    expect(BRIDGE_EVENT.length).toBeGreaterThan(0);
+  });
+  it('getUIFramework 在 node 环境返回 null 且不抛异常', () => {
+    expect(getUIFramework()).toBeNull();
+  });
+  it('isVisibleMessage 正确过滤隐藏状态', () => {
+    expect(isVisibleMessage(1)).toBe(false);
+    expect(isVisibleMessage(7)).toBe(false);
+    expect(isVisibleMessage(2)).toBe(true);
+    expect(isVisibleMessage(undefined)).toBe(true);
+  });
+  it('createEmptyRequestCache 返回预期槽位结构', () => {
+    expect(createEmptyRequestCache()).toEqual({ single: null, recent: null, title: null });
+  });
+});
+
+describe('readPageAuth（P2 未接线函数守护）', () => {
+  it('识别 session cookie 与 msToken', () => {
+    const s = readPageAuth('sessionid=abc; mstoken=xyz; web_id=123');
+    expect(s.hasSessionCookie).toBe(true);
+    expect(s.hasMsToken).toBe(true);
+    expect(s.webId).toBe('123');
+  });
+  it('缺失登录态时全部为 false/null', () => {
+    const s = readPageAuth('foo=bar');
+    expect(s.hasSessionCookie).toBe(false);
+    expect(s.hasMsToken).toBe(false);
+    expect(s.webId).toBeNull();
   });
 });

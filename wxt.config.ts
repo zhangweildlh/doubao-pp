@@ -41,6 +41,14 @@ export function createManifest(env: ConfigEnv): UserManifest {
     permissions: ['storage', 'alarms', 'contextMenus'],
     optional_host_permissions: ['http://*/*', 'https://*/*'],
     host_permissions: ['*://www.doubao.com/*', '*://doubao.com/*'],
+    // 路线 A 下扩展当前不向页面注入资源；按方案 §4.3 预留豆包域可访问资源声明，
+    // 供后续侧边栏 / 浮窗 / 记忆面板注入扩展资源时使用。
+    web_accessible_resources: [
+      {
+        resources: ['chunks/*'],
+        matches: ['*://www.doubao.com/*', '*://doubao.com/*'],
+      },
+    ],
     content_security_policy: {
       extension_pages: "script-src 'self' 'wasm-unsafe-eval'; object-src 'self'",
     },

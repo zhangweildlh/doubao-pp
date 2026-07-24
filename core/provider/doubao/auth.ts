@@ -13,6 +13,8 @@ export interface PageAuthSnapshot {
 }
 
 // 入参为 document.cookie 字符串（页面内直接取 cookie）；此处纯函数，便于单测。
+// TODO(P2-backlog): 当前未接线。待记忆注入流程在增强请求前读取页面登录态，
+//   校验注入合法性（登录态缺失时跳过注入）；路线 A 下仅读取不重算签名。
 export function readPageAuth(cookie: string): PageAuthSnapshot {
   const parts = cookie.split(';').map((c) => c.trim());
   const keys = parts.map((c) => c.split('=')[0].toLowerCase());

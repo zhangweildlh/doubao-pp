@@ -72,7 +72,7 @@ export function installFetchHook(callbacks: FetchHookCallbacks = {}): void {
         const parsed = JSON.parse(init.body) as unknown;
         const augmented = provider.augmentCompletionRequest(parsed);
         finalInit = { ...(init as RequestInit), body: JSON.stringify(augmented) };
-        callbacks.onRequestBody?.(parsed, ctx);
+        callbacks.onRequestBody?.(augmented, ctx);
         bridgeEmit({ type: 'REQUEST_AUGMENTED', requestId: ctx.requestId });
       } catch (err) {
         // 增强失败时退回原始请求，保证豆包可正常使用

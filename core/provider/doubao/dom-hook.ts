@@ -17,6 +17,8 @@ import {
 export const BRIDGE_EVENT = '__DOUBAO_PP_BRIDGE_V1__';
 
 // P2-a：读取豆包 SPA 框架全局对象（页面注入落点）
+// TODO(P2-backlog): 当前未接线。待记忆系统 / 侧边栏 / 浮窗在 main-world.content.ts
+//   调用，用于挂载 UI 钩子与读取框架内部数据；现为独立纯函数，可单测。
 export function getUIFramework(): Record<string, unknown> | null {
   const w = globalThis as unknown as Record<string, unknown>;
   const fw = w[UIFRAMEWORK_GLOBAL];
@@ -24,12 +26,14 @@ export function getUIFramework(): Record<string, unknown> | null {
 }
 
 // P2-b：隐藏消息状态判定，避免误注入 / 重复处理
+// TODO(P2-backlog): 当前未接线。待记忆注入流程调用，过滤隐藏 / 系统状态消息。
 export function isVisibleMessage(status?: number): boolean {
   if (status === undefined) return true;
   return !HIDDEN_MESSAGE_STATUSES.has(status);
 }
 
 // P2-d：捕获页面自有请求的响应（非检测地获取页面数据，供记忆系统消费）
+// TODO(P2-backlog): 当前未接线。待记忆系统消费端调用，缓存页面请求槽位。
 export function createEmptyRequestCache() {
   return { single: null as unknown, recent: null as unknown, title: null as unknown };
 }

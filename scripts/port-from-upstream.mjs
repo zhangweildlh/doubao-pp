@@ -21,7 +21,9 @@
 // 安全边界：
 //   - 只读文本文件（按扩展名白名单过滤）
 //   - 跳过 .git / node_modules / dist / .wxt / .workbuddy / analysis / ported
+//   - 显式不触碰 core/provider/doubao/*（本仓库手写实现，方案 §4.4）
 //   - 默认不写入「内容未变化」的文件
+//   - 严禁将 --src 指向本仓库自身（见下方安全拦截）
 
 import {
   readFileSync,
@@ -61,6 +63,19 @@ const SKIP_DIRS = new Set([
   '.git', 'node_modules', 'dist', '.output', '.wxt',
   '.workbuddy', '.mimocode', 'analysis', 'ported',
 ]);
+// 方案 §4.4：显式不触碰本仓库手写实现 core/provider/doubao/*
+// （即便误把 --src 指向本仓库，也绝不覆盖手写代码）。
+const SKIP_PATH_PREFIXES = new Set([
+  'core/provider/doubao',
+  'core/provider/doubao/',
+]);
+
+function isSkippedPath(relNorm) {
+  for (const p of SKIP_PATH_PREFIXES) {
+    if (relNorm === p || relNorm.startsWith(p + '/')) return true;
+  }
+  return false;
+}
 
 function parseArgs(argv) {
   const o = {};
@@ -76,6 +91,13 @@ function parseArgs(argv) {
 let fileCount = 0;
 let changeCount = 0;
 
+if (resolve(src) === REPO) {
+  console.error(
+    '安全拦截：请勿将 --src 指向本仓库自身（Doubao-pp）。\n' +
+      '该脚本仅用于从外部 Deepseek-pp 源生成移植副本，避免误覆盖手写代码。',
+  );
+  process.exit(1);
+}
 if (!existsDir(src)) {
   console.error(`源目录不存在：${src}`);
   process.exit(1);
@@ -93,6 +115,8 @@ function walk(dir, outDir) {
     if (SKIP_DIRS.has(entry.name)) continue;
     const full = resolve(dir, entry.name);
     const rel = relative(src, full);
+    const relNorm = rel.split(/[\\/]/).join('/');
+    if (isSkippedPath(relNorm)) continue;
     const target = resolve(outDir, rel);
     if (entry.isDirectory()) {
       walk(full, target);
