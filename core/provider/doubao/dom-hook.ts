@@ -9,8 +9,8 @@
 
 import {
   DOUBAO_SELECTORS,
-  UIFRAMEWORK_GLOBAL,
   HIDDEN_MESSAGE_STATUSES,
+  UI_FRAMEWORK_CANDIDATES,
 } from './contracts.ts';
 
 // P2-c：content ↔ popup/worker/侧边栏 React 通信桥事件名
@@ -18,10 +18,21 @@ export const BRIDGE_EVENT = '__DOUBAO_PP_BRIDGE_V1__';
 
 // P2-a：读取豆包 SPA 框架全局对象（页面注入落点）
 // 已真实接线：dom-observer.ts 在 MAIN world 调用 getUIFramework() 检测框架并广播 DOM_READY。
-export function getUIFramework(): Record<string, unknown> | null {
+// 真机验收（2026-07-24）确认 DoubaoUIFramework 在豆包网页版不存在，改为软检测候选列表：
+// 命中任意已知框架全局即视为框架存在（best-effort，不影响路线 A 注入与记忆桥接）。
+export function getUIFrameworkName(): string {
   const w = globalThis as unknown as Record<string, unknown>;
-  const fw = w[UIFRAMEWORK_GLOBAL];
-  return (fw as Record<string, unknown>) || null;
+  for (const k of UI_FRAMEWORK_CANDIDATES) {
+    const v = w[k];
+    if (v && (typeof v === 'object' || typeof v === 'function')) return k;
+  }
+  return '';
+}
+
+export function getUIFramework(): Record<string, unknown> | null {
+  const name = getUIFrameworkName();
+  if (!name) return null;
+  return (globalThis as unknown as Record<string, unknown>)[name] as Record<string, unknown> | null;
 }
 
 // P2-b：隐藏消息状态判定，避免误注入 / 重复处理
@@ -37,23 +48,43 @@ export function createEmptyRequestCache() {
   return { single: null as unknown, recent: null as unknown, title: null as unknown };
 }
 
-// P2-c：把豆包事件桥接到扩展侧边栏 / 浮窗
+// P2-c：把豆包事件桥接到扩展侧边栏 / 浮窗 / 后台 service worker
+//
+// 双路径：
+//   1) 页面内 CustomEvent（供 MAIN world / 验证脚本消费，标准浏览器与 360Chrome 均可用）
+//   2) 后台桥接：
+//      - 优先 chrome.runtime.sendMessage（标准浏览器 MAIN world 拥有 chrome.runtime）
+//      - 回退 window.postMessage 交由 ISOLATED world 中继脚本转发（360Chrome 等环境
+//        MAIN world 无 chrome.runtime，详见 entrypoints/relay.content.ts）
+export const RELAY_MESSAGE = '__doubaoPpRelay';
+
 export function bridgeEmit(payload: unknown): void {
-  const w = globalThis as unknown as { dispatchEvent?: (e: Event) => boolean };
+  const w = globalThis as any;
+  // 1) 页面内 CustomEvent（MAIN world / 验证脚本消费）
   if (w.dispatchEvent) {
-    w.dispatchEvent(new CustomEvent(BRIDGE_EVENT, { detail: payload }));
+    try {
+      w.dispatchEvent(new CustomEvent(BRIDGE_EVENT, { detail: payload }));
+    } catch {
+      /* 忽略 */
+    }
   }
-  // 跨执行环境桥接：MAIN world → background service worker
-  // chrome.runtime.sendMessage 在普通网页上下文会抛异常，用可选链 + try-catch 屏蔽
-  try {
-    (globalThis as any).chrome?.runtime?.sendMessage({
-      __doubaoPpBridge: true,
-      type: BRIDGE_EVENT,
-      detail: payload,
-    });
-  } catch {
-    // 非扩展上下文（普通网页），静默忽略
+  // 2) 后台桥接：优先直连，缺失 chrome.runtime 时回退 postMessage 中继
+  const bridgeMsg = { __doubaoPpBridge: true, type: BRIDGE_EVENT, detail: payload };
+  if (w.chrome?.runtime?.sendMessage) {
+    try {
+      w.chrome.runtime.sendMessage(bridgeMsg);
+      return;
+    } catch {
+      /* 直连失败，继续回退 */
+    }
+  }
+  if (w.postMessage) {
+    try {
+      w.postMessage({ __doubaoPpRelay: true, type: BRIDGE_EVENT, detail: payload }, '*');
+    } catch {
+      /* 非扩展上下文，静默忽略 */
+    }
   }
 }
 
-export { DOUBAO_SELECTORS, UIFRAMEWORK_GLOBAL };
+export { DOUBAO_SELECTORS, UI_FRAMEWORK_CANDIDATES };

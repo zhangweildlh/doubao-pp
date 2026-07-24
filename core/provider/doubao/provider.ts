@@ -8,7 +8,7 @@ import type { ChatProvider, StreamEvent } from '../types.ts';
 import {
   DOUBAO_WEB_ORIGIN,
   DOUBAO_SELECTORS,
-  UIFRAMEWORK_GLOBAL,
+  UI_FRAMEWORK_CANDIDATES,
 } from './contracts.ts';
 import { parseDoubaoSSE } from './stream-codec.ts';
 import { augmentCompletionRequest } from './request-aug.ts';
@@ -64,6 +64,6 @@ export function createDoubaoProvider(): ChatProvider {
     buildSessionUrl,
 
     selectors: DOUBAO_SELECTORS,
-    uiFrameworkGlobal: UIFRAMEWORK_GLOBAL,
+    uiFrameworkGlobal: UI_FRAMEWORK_CANDIDATES[0],
   };
 }

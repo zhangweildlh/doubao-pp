@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
-// DOM 钩子 + auth 真实接线集成测试（jsdom 模拟豆包页面）
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+// DOM 钩子 + auth 真实接线集成测试（jsdom 模拟豆包页面，选择器以真机验收 2026-07-24 为准）
+import { describe, it, expect, afterAll } from 'vitest';
 import { BRIDGE_EVENT } from '../core/provider/doubao/dom-hook.ts';
 import {
   startDomObserver,
   startAuthWatcher,
   extractAssistantText,
   shouldProcessMessage,
+  isAssistantMessage,
 } from '../core/provider/doubao/dom-observer.ts';
 import { setAuthed, isAuthed } from '../core/provider/doubao/auth-state.ts';
 
@@ -19,31 +20,29 @@ function attachCollector(): any[] {
 
 const tick = (ms = 10) => new Promise((r) => setTimeout(r, ms));
 
-beforeAll(() => {
-  // 模拟豆包 SPA 框架全局对象存在
-  (globalThis as any).DoubaoUIFramework = { version: '1' };
-});
-
 afterAll(() => {
-  delete (globalThis as any).DoubaoUIFramework;
   delete (globalThis as any).chrome;
+  delete (globalThis as any).React;
+  delete (globalThis as any).DoubaoUIFramework;
   setAuthed(true);
 });
 
-describe('dom-observer 真实接线', () => {
-  it('DOM_READY 广播 frameworkPresent=true', async () => {
+describe('dom-observer 真实接线（真机 DOM 结构 2026-07-24）', () => {
+  it('DOM_READY 广播（无框架全局时 frameworkPresent=false，best-effort）', async () => {
+    delete (globalThis as any).DoubaoUIFramework;
+    delete (globalThis as any).React;
     const events = attachCollector();
     startDomObserver();
     await tick(0);
     const ready = events.find((e) => e?.type === 'DOM_READY');
     expect(ready).toBeTruthy();
-    expect(ready.frameworkPresent).toBe(true);
+    expect(ready.frameworkPresent).toBe(false);
   });
 
-  it('可见助手消息出现时广播 PAGE_MESSAGE', async () => {
+  it('助手消息（data-message-id，无发送气泡）出现时广播 PAGE_MESSAGE', async () => {
     const events = attachCollector();
     const div = document.createElement('div');
-    div.className = 'chat-content';
+    div.setAttribute('data-message-id', '999');
     div.textContent = '你好世界';
     document.body.appendChild(div);
     await tick();
@@ -52,18 +51,18 @@ describe('dom-observer 真实接线', () => {
     expect(msg.text).toContain('你好世界');
   });
 
-  it('隐藏状态消息（data-msg-status=1）被过滤，不广播', async () => {
+  it('用户消息（含发送气泡 class）不广播 PAGE_MESSAGE', async () => {
     const events = attachCollector();
     const div = document.createElement('div');
-    div.className = 'chat-content';
-    div.setAttribute('data-msg-status', '1');
-    div.textContent = '系统消息';
+    div.setAttribute('data-message-id', '998');
+    const bubble = document.createElement('div');
+    bubble.className = 'bg-g-send-msg-bubble-bg';
+    div.appendChild(bubble);
+    div.appendChild(document.createTextNode('我的提问'));
     document.body.appendChild(div);
     await tick();
-    const hidden = events.filter(
-      (e) => e?.type === 'PAGE_MESSAGE' && e.text?.includes('系统消息'),
-    );
-    expect(hidden.length).toBe(0);
+    const msg = events.filter((e) => e?.type === 'PAGE_MESSAGE' && e.text?.includes('我的提问'));
+    expect(msg.length).toBe(0);
   });
 });
 
@@ -97,12 +96,43 @@ describe('纯函数', () => {
     expect(extractAssistantText(el)).toBe('x');
   });
 
-  it('shouldProcessMessage 过滤隐藏状态', () => {
+  it('isAssistantMessage 区分用户/助手', () => {
+    const assistant = document.createElement('div');
+    assistant.setAttribute('data-message-id', '1');
+    expect(isAssistantMessage(assistant)).toBe(true);
+
+    const user = document.createElement('div');
+    user.setAttribute('data-message-id', '2');
+    const bubble = document.createElement('div');
+    bubble.className = 'bg-g-send-msg-bubble-bg';
+    user.appendChild(bubble);
+    expect(isAssistantMessage(user)).toBe(false);
+
+    const user2 = document.createElement('div');
+    user2.className = 'justify-end';
+    expect(isAssistantMessage(user2)).toBe(false);
+  });
+
+  it('shouldProcessMessage 仅处理非空助手消息', () => {
+    const assistant = document.createElement('div');
+    assistant.setAttribute('data-message-id', '1');
+    assistant.textContent = 'y';
+    expect(shouldProcessMessage(assistant)).toBe(true);
+    assistant.textContent = '';
+    expect(shouldProcessMessage(assistant)).toBe(false);
+
+    const user = document.createElement('div');
+    user.setAttribute('data-message-id', '2');
+    user.className = 'bg-g-send-msg-bubble-bg';
+    user.textContent = 'z';
+    expect(shouldProcessMessage(user)).toBe(false);
+  });
+
+  it('getStatusFromEl 缺失 data-msg-status 时返回 undefined（isVisibleMessage 视为可见，有文本即通过）', () => {
     const el = document.createElement('div');
-    el.setAttribute('data-msg-status', '3');
-    el.textContent = 'y';
-    expect(shouldProcessMessage(el)).toBe(false);
-    el.removeAttribute('data-msg-status');
+    el.setAttribute('data-message-id', '1');
+    el.textContent = 'x';
+    // 真实豆包无 data-msg-status，故 status=undefined → isVisibleMessage 返回 true，不阻断处理
     expect(shouldProcessMessage(el)).toBe(true);
   });
 });

@@ -12,11 +12,11 @@
 
 import {
   getUIFramework,
+  getUIFrameworkName,
   isVisibleMessage,
   createEmptyRequestCache,
   bridgeEmit,
   DOUBAO_SELECTORS,
-  UIFRAMEWORK_GLOBAL,
 } from './dom-hook.ts';
 import { readPageAuth, type PageAuthSnapshot } from './auth.ts';
 import { setAuthed } from './auth-state.ts';
@@ -37,8 +37,18 @@ export function getStatusFromEl(el: Element): number | undefined {
   return Number.isNaN(n) ? undefined : n;
 }
 
-// 是否应处理该消息：可见（非隐藏状态）且含非空文本
+// 是否助手消息：真实 DOM 中用户消息含发送气泡背景 class（bg-g-send-msg-bubble-bg）且右对齐
+// （justify-end）；助手消息不含上述特征。据此与用户消息区分，避免把用户发言误当助手广播。
+export function isAssistantMessage(el: Element): boolean {
+  const bubble = DOUBAO_SELECTORS.userBubbleClass;
+  if (el.classList.contains(bubble) || el.querySelector('.' + bubble)) return false;
+  if (el.classList.contains('justify-end') || el.querySelector('.justify-end')) return false;
+  return true;
+}
+
+// 是否应处理该消息：是助手消息（非用户气泡/右对齐）且可见（非隐藏状态）且含非空文本
 export function shouldProcessMessage(el: Element): boolean {
+  if (!isAssistantMessage(el)) return false;
   if (!isVisibleMessage(getStatusFromEl(el))) return false;
   return extractAssistantText(el).length > 0;
 }
@@ -78,7 +88,7 @@ export function startDomObserver(): void {
   const ready: DomReadyPayload = {
     type: 'DOM_READY',
     frameworkPresent: fw !== null,
-    uiFrameworkGlobal: UIFRAMEWORK_GLOBAL,
+    uiFrameworkGlobal: getUIFrameworkName(),
     selectors: DOUBAO_SELECTORS,
   };
   bridgeEmit(ready);
