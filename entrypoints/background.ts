@@ -83,9 +83,11 @@ function handleBridgeDetail(detail: Record<string, unknown>): void {
     return;
   }
 
-  // 其他桥接事件（REQUEST_AUGMENTED / STREAMING_TEXT / ERROR）仅暂存供调试
-  // STREAMING_TEXT 为高频逐字事件，跳过 console 以免刷屏；其余低频事件记录便于排障
-  if (detail.type !== 'STREAMING_TEXT') {
+  // 其他桥接事件（REQUEST_AUGMENTED / CONVERSATION_READY / ERROR 等）仅暂存供调试。
+  // STREAMING_TEXT 现在走页内 CustomEvent 桥接（bridgeEmitPage），background 收不到，
+  // 此分支实际不可达，保留作防御；ASSISTANT_TEXT 文本体量大且已持久化，跳过以免日志膨胀。
+  // 仅对 REQUEST_AUGMENTED / CONVERSATION_READY / ERROR 等元信息事件记录便于排障。
+  if (detail.type !== 'STREAMING_TEXT' && detail.type !== 'ASSISTANT_TEXT') {
     console.info('[Doubao-pp][bridge]', detail.type, detail);
   }
   bridgeMessages.push({

@@ -87,4 +87,30 @@ describe('floating-state 归约', () => {
     expect(s.streamingText).toBe('');
     expect(s.eventCount).toBe(4);
   });
+
+  it('多轮对话：新一轮 REQUEST_AUGMENTED 清空上一轮定稿，实时流式不被遮盖', () => {
+    let s: FloatingState = createInitialState();
+    // 第一轮：注入 → 定稿
+    s = reduceBridgeEvent(s, { type: 'REQUEST_AUGMENTED', requestId: 'r1' });
+    s = reduceBridgeEvent(s, {
+      type: 'ASSISTANT_TEXT',
+      requestId: 'r1',
+      text: '第一轮定稿文本',
+    });
+    expect(s.finalText).toBe('第一轮定稿文本');
+    expect(s.currentRequestId).toBe('r1');
+    // 第二轮：新 requestId 触发轮次切换，应清空上一轮定稿
+    s = reduceBridgeEvent(s, { type: 'REQUEST_AUGMENTED', requestId: 'r2' });
+    expect(s.finalText).toBe(''); // 上一轮定稿已清空
+    expect(s.streamingText).toBe('');
+    expect(s.currentRequestId).toBe('r2');
+    // 第二轮流式文本应正常显示（不会被残留的 finalText 遮盖）
+    s = reduceBridgeEvent(s, { type: 'STREAMING_TEXT', requestId: 'r2', text: '第二轮流式内容' });
+    expect(s.streamingText).toBe('第二轮流式内容');
+    expect(s.finalText).toBe(''); // 仍有空，renderLive 显示流式而非旧定稿
+    // 第二轮定稿替换
+    s = reduceBridgeEvent(s, { type: 'ASSISTANT_TEXT', requestId: 'r2', text: '第二轮定稿文本' });
+    expect(s.finalText).toBe('第二轮定稿文本');
+    expect(s.streamingText).toBe('');
+  });
 });

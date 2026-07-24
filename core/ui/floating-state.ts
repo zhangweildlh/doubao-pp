@@ -23,6 +23,8 @@ export interface FloatingState {
   eventCount: number;
   /** 最近一次事件时间戳 */
   lastEventAt: number;
+  /** 当前轮次请求 id（用于多轮对话切换时清空上一轮定稿/流式，避免显示错位） */
+  currentRequestId: string | null;
 }
 
 export function createInitialState(): FloatingState {
@@ -35,6 +37,7 @@ export function createInitialState(): FloatingState {
     finalText: '',
     eventCount: 0,
     lastEventAt: 0,
+    currentRequestId: null,
   };
 }
 
@@ -49,6 +52,12 @@ export function reduceBridgeEvent(state: FloatingState, detail: BridgeDetail): F
     case 'REQUEST_AUGMENTED':
       // 标记记忆已注入请求体
       next.injected = true;
+      // 轮次切换（新 requestId）：清空上一轮定稿/流式，避免多轮对话显示错位
+      if (detail.requestId !== state.currentRequestId) {
+        next.finalText = '';
+        next.streamingText = '';
+        next.currentRequestId = detail.requestId;
+      }
       break;
     case 'CONVERSATION_READY':
       next.conversationId = detail.conversationId;
@@ -56,13 +65,20 @@ export function reduceBridgeEvent(state: FloatingState, detail: BridgeDetail): F
       next.sessionUrl = detail.sessionUrl;
       break;
     case 'STREAMING_TEXT':
-      // 实时累计文本（fetch-hook 每事件已重算完整累计，这里直接覆盖）
-      next.streamingText = detail.text;
+      // 实时累计文本（fetch-hook 每事件已重算完整累计，这里直接覆盖）。
+      // 仅接受当前轮事件（currentRequestId 匹配），避免历史残留混入；
+      // 初始态（currentRequestId 尚未建立）时接受首个流式以容错事件到达顺序。
+      if (detail.requestId === state.currentRequestId || state.currentRequestId === null) {
+        next.streamingText = detail.text;
+      }
       break;
     case 'ASSISTANT_TEXT':
-      // 定稿：权威文本替换显示，并清空流式缓冲（避免定稿后再叠加旧流式）
-      next.finalText = detail.text;
-      next.streamingText = '';
+      // 定稿：权威文本替换显示，并清空流式缓冲（避免定稿后再叠加旧流式）。
+      // 仅接受当前轮事件，避免历史残留错位；初始态容错同上。
+      if (detail.requestId === state.currentRequestId || state.currentRequestId === null) {
+        next.finalText = detail.text;
+        next.streamingText = '';
+      }
       break;
     case 'ERROR':
       // 仅计数，不改变展示状态
