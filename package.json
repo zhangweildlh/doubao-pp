@@ -3,7 +3,7 @@
   "description": "为豆包网页版提供记忆、技能与自动化能力的浏览器扩展（Deepseek-pp 移植）",
   "private": true,
   "license": "Apache-2.0",
-  "version": "0.1.0",
+  "version": "1.11.6.1",
   "type": "module",
   "scripts": {
     "dev": "wxt",
