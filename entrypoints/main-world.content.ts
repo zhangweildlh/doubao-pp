@@ -8,6 +8,7 @@
 import { installFetchHook } from '../core/interceptor/fetch-hook.ts';
 import type { RequestContext } from '../core/interceptor/fetch-hook.ts';
 import { getActiveProvider } from '../core/provider/active.ts';
+import { startDomObserver, startAuthWatcher } from '../core/provider/doubao/dom-observer.ts';
 
 export default defineContentScript({
   matches: ['*://www.doubao.com/chat/*'],
@@ -32,6 +33,8 @@ export default defineContentScript({
         console.error('[Doubao-pp]', message, error);
       },
     });
+    startAuthWatcher(); // auth 真实接线：读取页面登录态并广播 AUTH_STATUS、驱动注入软门禁
+    startDomObserver(); // DOM 钩子真实接线：监听助手消息 + 钩 DoubaoUIFramework
     console.info(`[Doubao-pp] 已挂载 ${provider.id} 拦截器（路线 A 非检测）`);
   },
 });

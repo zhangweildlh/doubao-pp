@@ -13,6 +13,7 @@ import {
 import { parseDoubaoSSE } from './stream-codec.ts';
 import { augmentCompletionRequest } from './request-aug.ts';
 import { resolveChatSessionId, buildSessionUrl } from './chat-session.ts';
+import { isAuthed } from './auth-state.ts';
 
 // 记忆 / Skills 注入标记（对齐验证②的 INJECT_TEXT）
 const MEMORY_MARKER = '[来自Doubao-pp记忆系统的上下文] ';
@@ -40,6 +41,10 @@ export function createDoubaoProvider(): ChatProvider {
       ) {
         return body;
       }
+
+      // auth 真实接线（软门禁，fail-open）：未确认登录态时跳过记忆注入，
+      // 避免把标记发到登录/异常上下文；登录态判定由 startAuthWatcher 经 document.cookie 置位。
+      if (!isAuthed()) return body;
 
       // 用 try-catch 包裹增强逻辑，异常时退回原请求体，绝不向上抛出
       try {
