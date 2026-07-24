@@ -1,16 +1,84 @@
 // Doubao-pp background service worker
 //
-// 监听 MAIN world content script 通过 chrome.runtime.sendMessage 发来的
-// 事件桥消息（__doubaoPpBridge: true），暂存最近 20 条供后续 popup/sidebar 消费。
-// 同时响应 popup 发来的 GET_BRIDGE_HISTORY / CLEAR_BRIDGE_HISTORY 请求。
+// 职责：
+//   1. 监听 MAIN world content script 经 chrome.runtime.sendMessage 发来的
+//      事件桥消息（__doubaoPpBridge: true），暂存最近 20 条供 popup/sidebar 调试查看。
+//   2. 消费 CONVERSATION_READY + ASSISTANT_TEXT 事件，将定稿助手文本持久化到记忆系统
+//      （chrome.storage.local），按 conversationId 去重。
+//   3. 响应 popup 的 GET_BRIDGE_HISTORY / CLEAR_BRIDGE_HISTORY / GET_MEMORY / CLEAR_MEMORY。
 //
 // 注：defineBackground 由 wxt auto-import 提供，无需显式 import。
 
 import { BRIDGE_EVENT } from '../core/provider/doubao/dom-hook.ts';
+import {
+  MemoryStore,
+  chromeStorageBackend,
+  type MemoryEntry,
+} from '../core/memory/store.ts';
 
-// 模块级消息缓存，最多保留最近 20 条
+// 模块级消息缓存，最多保留最近 20 条（调试用桥接历史）
 const bridgeMessages: Array<{ type: string; detail: unknown; receivedAt: number }> = [];
 const MAX_BRIDGE_MESSAGES = 20;
+
+// 记忆存储（真机后端：chrome.storage.local）
+const memory = new MemoryStore(chromeStorageBackend);
+
+// 关联 CONVERSATION_READY 与 ASSISTANT_TEXT：二者共享 requestId
+type PendingMeta = {
+  conversationId: string | null;
+  sectionId: string | null;
+  sessionUrl: string | null;
+};
+const pendingConv = new Map<string, PendingMeta>();
+let lastConversationId: string | null = null;
+
+function handleBridgeDetail(detail: Record<string, unknown>): void {
+  const evtType = detail.type;
+
+  // CONVERSATION_READY：记录会话元信息，供后续 ASSISTANT_TEXT 关联
+  if (evtType === 'CONVERSATION_READY') {
+    const reqId = detail.requestId as string | undefined;
+    const meta: PendingMeta = {
+      conversationId: (detail.conversationId as string | null) ?? null,
+      sectionId: (detail.sectionId as string | null) ?? null,
+      sessionUrl: (detail.sessionUrl as string | null) ?? null,
+    };
+    if (reqId) pendingConv.set(reqId, meta);
+    if (meta.conversationId) lastConversationId = meta.conversationId;
+    return;
+  }
+
+  // ASSISTANT_TEXT：定稿文本，持久化到记忆系统（按 conversationId 去重）
+  if (evtType === 'ASSISTANT_TEXT') {
+    const reqId = detail.requestId as string | undefined;
+    const text = typeof detail.text === 'string' ? detail.text : '';
+    const meta = (reqId && pendingConv.get(reqId)) || null;
+    const conversationId = meta?.conversationId ?? lastConversationId;
+    const entry: MemoryEntry = {
+      id: conversationId ?? reqId ?? `anon-${Date.now()}`,
+      conversationId,
+      sectionId: meta?.sectionId ?? null,
+      sessionUrl: meta?.sessionUrl ?? null,
+      assistantText: text,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    // 记忆写入为异步且不需要回包，fire-and-forget；真机验收阶段需关注 SW 存活窗口
+    void memory.append(entry);
+    if (reqId) pendingConv.delete(reqId);
+    return;
+  }
+
+  // 其他桥接事件（REQUEST_AUGMENTED / STREAMING_TEXT / ERROR）仅暂存供调试
+  bridgeMessages.push({
+    type: BRIDGE_EVENT,
+    detail,
+    receivedAt: Date.now(),
+  });
+  if (bridgeMessages.length > MAX_BRIDGE_MESSAGES) {
+    bridgeMessages.shift();
+  }
+}
 
 export default defineBackground(() => {
   chrome.runtime.onMessage.addListener(
@@ -19,35 +87,33 @@ export default defineBackground(() => {
       _sender,
       sendResponse: (response?: unknown) => void,
     ) => {
-      // 处理 popup 请求：获取桥接历史记录
+      // —— popup 请求：桥接历史 ——
       if (msg.type === 'GET_BRIDGE_HISTORY') {
-        // 返回暂存副本（浅拷贝），避免外部修改内部状态
         sendResponse(bridgeMessages.slice());
         return true;
       }
-
-      // 处理 popup 请求：清空桥接历史记录
       if (msg.type === 'CLEAR_BRIDGE_HISTORY') {
         bridgeMessages.length = 0;
         sendResponse({ ok: true });
         return true;
       }
 
+      // —— popup 请求：记忆 ——
+      if (msg.type === 'GET_MEMORY') {
+        memory.getAll().then(sendResponse);
+        return true; // 保持消息通道以异步回包
+      }
+      if (msg.type === 'CLEAR_MEMORY') {
+        memory.clear().then(() => sendResponse({ ok: true }));
+        return true;
+      }
+
       // 过滤非桥接消息（同时校验事件名，仅接受 BRIDGE_EVENT 类型）
       if (msg.__doubaoPpBridge !== true || msg.type !== BRIDGE_EVENT) return;
 
-      // 打印桥接消息，便于调试
-      console.info('[Doubao-pp][bridge]', msg.type, msg.detail);
-
-      // 暂存到模块级数组，超出上限则移除最早条目
-      bridgeMessages.push({
-        type: msg.type as string,
-        detail: msg.detail,
-        receivedAt: Date.now(),
-      });
-      if (bridgeMessages.length > MAX_BRIDGE_MESSAGES) {
-        bridgeMessages.shift();
-      }
+      const detail = (msg.detail ?? {}) as Record<string, unknown>;
+      console.info('[Doubao-pp][bridge]', detail.type, detail);
+      handleBridgeDetail(detail);
     },
   );
 
