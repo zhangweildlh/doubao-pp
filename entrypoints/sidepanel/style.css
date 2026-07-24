@@ -425,3 +425,237 @@ input[type='range'] {
   font-size: 12px;
   line-height: 1.6;
 }
+
+/* =========================================================================
+   P3 基础组件样式（移植自 Deepseek-pp，品牌无关，仅依赖共享 --ds-* 变量）
+   配套组件：components/settings/primitives.tsx、feedback-primitives.tsx、
+   components/PageIntro.tsx。Tailwind 工具类（space-y-* / flex / p-4 等）由
+   @tailwindcss/vite 自动扫描生成，此处仅补语义类名。
+   ========================================================================= */
+
+/* PageIntro —— 页面引言头 */
+.ds-page-intro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 12px;
+  border-bottom: 1px solid var(--ds-border);
+}
+.ds-page-intro-title {
+  margin: 0;
+  color: var(--ds-text);
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+.ds-page-intro-meta {
+  display: inline-block;
+  padding: 1px 7px;
+  font-size: 10px;
+  font-weight: 600;
+  border-radius: var(--radius-pill);
+  color: var(--ds-blue);
+  background: var(--ds-blue-light);
+}
+.ds-page-intro-description {
+  margin: 4px 0 0;
+  max-width: 34rem;
+  color: var(--ds-text-secondary);
+  font-size: 11px;
+  line-height: 1.6;
+}
+.ds-page-intro-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* SettingsSection */
+.ds-settings-section-title {
+  margin: 0;
+  color: var(--ds-text);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+.ds-settings-section-description {
+  margin: 2px 0 0;
+  color: var(--ds-text-secondary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+.ds-surface-panel {
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius-card);
+  background: var(--ds-card);
+}
+
+/* Switch (ToggleRow) */
+.ds-switch {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.ds-switch-thumb {
+  box-shadow: var(--ds-shadow-sm);
+}
+
+/* Range (Slider) */
+.ds-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--ds-text-on-primary);
+  border: 2px solid var(--ds-blue);
+  cursor: pointer;
+}
+.ds-range::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 999px;
+  background: var(--ds-text-on-primary);
+  border: 2px solid var(--ds-blue);
+  cursor: pointer;
+}
+
+/* SubTabs */
+.sub-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius-ctrl);
+  background: var(--ds-surface);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.sub-tabs::-webkit-scrollbar { display: none; }
+.sub-tab {
+  flex: 0 0 auto;
+  padding: 5px 12px;
+  border: 0;
+  border-radius: var(--radius-ctrl);
+  background: transparent;
+  color: var(--ds-text-secondary);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+.sub-tab:hover { background: var(--ds-surface-hover); color: var(--ds-text); }
+.sub-tab-active,
+.sub-tab-active:hover {
+  background: var(--ds-blue);
+  color: var(--ds-text-on-primary);
+}
+
+/* SegmentedControl */
+.ds-segmented { }
+
+/* EmptyState */
+.ds-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 36px 20px;
+  text-align: center;
+}
+.ds-empty-state-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 999px;
+  color: var(--ds-text-tertiary);
+  background: var(--ds-surface);
+  border: 1px solid var(--ds-border);
+}
+.ds-empty-state-title {
+  margin: 0;
+  color: var(--ds-text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.ds-empty-state-description {
+  margin: 0;
+  max-width: 26rem;
+  color: var(--ds-text-secondary);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+/* Skeleton */
+.ds-skeleton {
+  height: 12px;
+  background: linear-gradient(90deg, var(--ds-surface) 25%, var(--ds-surface-hover) 37%, var(--ds-surface) 63%);
+  background-size: 400% 100%;
+  animation: ds-skeleton-shimmer 1.4s ease infinite;
+}
+@keyframes ds-skeleton-shimmer {
+  0% { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+/* Modal (ConfirmDialog) */
+.ds-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: oklch(0.20 0.02 210 / 0.42);
+  backdrop-filter: blur(2px);
+}
+.ds-modal-card {
+  width: 100%;
+  max-width: 320px;
+  padding: 16px;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--radius-card);
+  background: var(--ds-card);
+  box-shadow: var(--ds-shadow-lg);
+}
+.ds-modal-title {
+  margin: 0;
+  color: var(--ds-text);
+  font-size: 14px;
+  font-weight: 700;
+}
+.ds-modal-message {
+  margin: 8px 0 14px;
+  color: var(--ds-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
+.ds-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.ds-btn-cancel {
+  background: var(--ds-surface);
+  color: var(--ds-text);
+  border: 1px solid var(--ds-border);
+  cursor: pointer;
+}
+.ds-btn-cancel:hover { background: var(--ds-surface-hover); }
+.ds-btn-danger {
+  background: var(--ds-danger);
+  color: var(--ds-text-on-primary);
+  border: 1px solid var(--ds-danger-border);
+  cursor: pointer;
+}
+.ds-btn-danger:hover { background: var(--ds-danger-bg-hover); border-color: var(--ds-danger-border-hover); }
+
