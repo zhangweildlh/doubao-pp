@@ -16,10 +16,11 @@ import {
   type TypedRuntimeCommandResponse,
 } from '../../core/messaging/runtime-command-registry.ts';
 import {
-  MemoryStore,
   chromeStorageBackend,
-  type MemoryEntry,
 } from '../../core/memory/store.ts';
+import {
+  UserMemoryStore,
+} from '../../core/memory/user-memory.ts';
 import { SkillStore, chromeSyncStorageBackend, type SkillEntry } from '../../core/skills/store.ts';
 import { McpStore, type McpToolEntry } from '../../core/mcp/store.ts';
 import { ProjectStore, type ProjectInput, type ProjectEntry } from '../../core/project/store.ts';
@@ -38,7 +39,8 @@ import type {
 } from '../../core/messaging/runtime-command-contracts.ts';
 
 export interface DoubaoRuntimeHandlerDependencies {
-  memory: MemoryStore;
+  /** 用户笔记型记忆（方案 A：与对话记忆 MemoryEntry 并存两套） */
+  userMemory: UserMemoryStore;
   mcp: McpStore;
   skill: SkillStore;
   project: ProjectStore;
@@ -55,34 +57,30 @@ export function createDoubaoRuntimeHandlers(
     deps.broadcast(type);
   };
 
-  // —— 记忆 ——
+  // —— 记忆（用户笔记型，方案 A：与对话记忆 MemoryEntry 并存两套） ——
   const getMemories = definePayloadlessRuntimeCommandHandler(
     'GET_MEMORIES',
     (_context: RuntimeMessageContext) =>
-      deps.memory.getAll() as Promise<TypedRuntimeCommandResponse<'GET_MEMORIES'>>,
+      deps.userMemory.getAll() as Promise<TypedRuntimeCommandResponse<'GET_MEMORIES'>>,
   );
 
   const getMemoryById = defineRuntimeCommandHandler<'GET_MEMORY_BY_ID', DeleteByIdCommand>({
     type: 'GET_MEMORY_BY_ID',
     decode: (message) => message.payload as DeleteByIdCommand,
-    handle: async (request) => (await deps.memory.getById(request.id)) ?? null,
+    handle: async (request) => (await deps.userMemory.getById(request.id)) ?? null,
   });
 
   const saveMemory = defineRuntimeCommandHandler<'SAVE_MEMORY', SaveMemoryPayload>({
     type: 'SAVE_MEMORY',
     decode: (message) => message.payload as SaveMemoryPayload,
     handle: async (request) => {
-      const id = request.id ?? request.conversationId ?? `mem-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const entry: MemoryEntry = {
-        id,
-        conversationId: request.conversationId ?? null,
-        sectionId: request.sectionId ?? null,
-        sessionUrl: request.sessionUrl ?? null,
-        assistantText: request.assistantText,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      };
-      await deps.memory.append(entry);
+      // id 存在 → 按 id 局部更新；否则新建（id 由 UserMemoryStore 生成）
+      if (request.id) {
+        const { id, ...patch } = request;
+        await deps.userMemory.update(id, patch);
+      } else {
+        await deps.userMemory.create(request);
+      }
       emit('MEMORIES_UPDATED');
       return { ok: true };
     },
@@ -92,7 +90,7 @@ export function createDoubaoRuntimeHandlers(
     type: 'DELETE_MEMORY',
     decode: (message) => message.payload as DeleteByIdCommand,
     handle: async (request) => {
-      await deps.memory.remove(request.id);
+      await deps.userMemory.remove(request.id);
       emit('MEMORIES_UPDATED');
       return { ok: true };
     },
@@ -101,7 +99,7 @@ export function createDoubaoRuntimeHandlers(
   const clearMemories = definePayloadlessRuntimeCommandHandler(
     'CLEAR_MEMORIES',
     async () => {
-      await deps.memory.clear();
+      await deps.userMemory.clear();
       emit('MEMORIES_UPDATED');
       return { ok: true };
     },
@@ -314,7 +312,7 @@ export function createDefaultDoubaoRuntimeDependencies(
   broadcast: (type: string) => void,
 ): DoubaoRuntimeHandlerDependencies {
   return {
-    memory: new MemoryStore(chromeStorageBackend),
+    userMemory: new UserMemoryStore(chromeStorageBackend),
     skill: new SkillStore(chromeSyncStorageBackend),
     mcp: new McpStore(chromeStorageBackend),
     project: new ProjectStore(chromeStorageBackend),

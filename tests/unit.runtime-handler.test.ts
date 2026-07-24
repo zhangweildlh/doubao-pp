@@ -14,7 +14,7 @@ import {
   createMemoryBackend,
   type StorageBackend,
 } from '../core/memory/store.ts';
-import { MemoryStore } from '../core/memory/store.ts';
+import { UserMemoryStore } from '../core/memory/user-memory.ts';
 import { SkillStore } from '../core/skills/store.ts';
 import { McpStore } from '../core/mcp/store.ts';
 import { ProjectStore } from '../core/project/store.ts';
@@ -36,7 +36,7 @@ function makeDeps(broadcast: (type: string) => void) {
   // 共享同一内存后端（各 Store 用不同 KEY，互不冲突），便于跨命令往返验证。
   const backend: StorageBackend = createMemoryBackend();
   return {
-    memory: new MemoryStore(backend),
+    userMemory: new UserMemoryStore(backend),
     skill: new SkillStore(backend),
     mcp: new McpStore(backend),
     project: new ProjectStore(backend),
@@ -63,22 +63,34 @@ describe('Doubao 运行时命令处理器（P2 覆盖）', () => {
     expect(registry.types.length).toBe(24);
   });
 
-  it('记忆：SAVE→GET→GET_BY_ID→DELETE→CLEAR 全链路 + 广播', async () => {
+  it('记忆（笔记型）：SAVE→GET→GET_BY_ID→DELETE→CLEAR 全链路 + 广播', async () => {
     expect(await registry.dispatch({ type: 'GET_MEMORIES' }, context)).toEqual([]);
 
     await registry.dispatch(
-      { type: 'SAVE_MEMORY', payload: { conversationId: 'c1', assistantText: '你好' } },
+      {
+        type: 'SAVE_MEMORY',
+        payload: {
+          type: 'user',
+          name: '笔记1',
+          content: '你好',
+          tags: ['greeting'],
+          pinned: false,
+        },
+      },
       context,
     );
     expect(broadcast).toHaveBeenCalledWith('MEMORIES_UPDATED');
 
     const list = (await registry.dispatch({ type: 'GET_MEMORIES' }, context)) as Array<{
-      conversationId: string;
-      assistantText: string;
+      content: string;
+      name: string;
       id: string;
+      type: string;
     }>;
     expect(list).toHaveLength(1);
-    expect(list[0].assistantText).toBe('你好');
+    expect(list[0].content).toBe('你好');
+    expect(list[0].name).toBe('笔记1');
+    expect(list[0].type).toBe('user');
     const id = list[0].id;
 
     const byId = (await registry.dispatch(
@@ -87,12 +99,40 @@ describe('Doubao 运行时命令处理器（P2 覆盖）', () => {
     )) as { id: string } | null;
     expect(byId?.id).toBe(id);
 
+    // 按 id 更新（同一 SAVE_MEMORY 命令，id 存在走 update 分支）
+    broadcast.mockClear();
+    await registry.dispatch(
+      {
+        type: 'SAVE_MEMORY',
+        payload: {
+          id,
+          type: 'user',
+          name: '笔记1（改）',
+          content: '你好世界',
+          tags: ['greeting', 'edited'],
+          pinned: true,
+        },
+      },
+      context,
+    );
+    expect(broadcast).toHaveBeenCalledWith('MEMORIES_UPDATED');
+    const updated = (await registry.dispatch(
+      { type: 'GET_MEMORY_BY_ID', payload: { id } },
+      context,
+    )) as { name: string; content: string; pinned: boolean };
+    expect(updated.name).toBe('笔记1（改）');
+    expect(updated.content).toBe('你好世界');
+    expect(updated.pinned).toBe(true);
+
     broadcast.mockClear();
     await registry.dispatch({ type: 'DELETE_MEMORY', payload: { id } }, context);
     expect(broadcast).toHaveBeenCalledWith('MEMORIES_UPDATED');
     expect(await registry.dispatch({ type: 'GET_MEMORIES' }, context)).toEqual([]);
 
-    await registry.dispatch({ type: 'SAVE_MEMORY', payload: { assistantText: 'a' } }, context);
+    await registry.dispatch(
+      { type: 'SAVE_MEMORY', payload: { type: 'feedback', name: 'f', content: 'a', tags: [], pinned: false } },
+      context,
+    );
     broadcast.mockClear();
     await registry.dispatch({ type: 'CLEAR_MEMORIES' }, context);
     expect(broadcast).toHaveBeenCalledWith('MEMORIES_UPDATED');

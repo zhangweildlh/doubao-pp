@@ -11,7 +11,7 @@
 //   - typed-handler：由 background 的 RuntimeCommandRegistry 实际处理（请求/响应）。
 //   - client-only：仅由 background 向 sidePanel 广播（如 *_UPDATED），不进注册表。
 
-import type { MemoryEntry } from '../memory/store.ts';
+import type { Memory, NewMemory } from '../types.ts';
 import type { SkillEntry } from '../skills/store.ts';
 import type { McpToolEntry } from '../mcp/store.ts';
 import type { ProjectInput, ProjectEntry } from '../project/store.ts';
@@ -130,16 +130,11 @@ function commandTypesOwnedBy(owner: RuntimeCommandOwner): readonly string[] {
 /** 命令载荷类型：按 id 删除/查询（通用）。 */
 export type DeleteByIdCommand = { id: string };
 /**
- * 命令载荷类型：记忆 upsert（部分字段）。由后台合成完整 MemoryEntry，
- * id 缺省时后台按 conversationId 或时间戳兜底；关联元信息可选。
+ * 命令载荷类型：用户笔记型记忆 upsert（完整笔记条目，id 可选）。
+ * id 存在时后台按 id 更新，否则新建；溯源字段可选（关联第2步对话记忆，但默认不依赖）。
+ * 对应 core/types.ts 的 NewMemory（方案 A：与对话记忆 MemoryEntry 并存两套）。
  */
-export type SaveMemoryPayload = {
-  id?: string;
-  conversationId?: string | null;
-  sectionId?: string | null;
-  sessionUrl?: string | null;
-  assistantText: string;
-};
+export type SaveMemoryPayload = NewMemory;
 /** 命令载荷类型：技能 upsert（完整条目）。 */
 export type SaveSkillCommand = SkillEntry;
 /** 命令载荷类型：MCP 服务 upsert（完整条目）。 */
@@ -160,8 +155,8 @@ export type UpdateConfigCommand = Partial<PluginSettings>;
  * 扩展命令时，在此补充对应条目即可保持与 Deepseek-pp 同构。
  */
 export interface RuntimeCommandContracts {
-  GET_MEMORIES: { request: { type: 'GET_MEMORIES' }; response: MemoryEntry[] };
-  GET_MEMORY_BY_ID: { request: { type: 'GET_MEMORY_BY_ID'; payload: DeleteByIdCommand }; response: MemoryEntry | null };
+  GET_MEMORIES: { request: { type: 'GET_MEMORIES' }; response: Memory[] };
+  GET_MEMORY_BY_ID: { request: { type: 'GET_MEMORY_BY_ID'; payload: DeleteByIdCommand }; response: Memory | null };
   SAVE_MEMORY: { request: { type: 'SAVE_MEMORY'; payload: SaveMemoryPayload }; response: { ok: true } };
   DELETE_MEMORY: { request: { type: 'DELETE_MEMORY'; payload: DeleteByIdCommand }; response: { ok: true } };
   CLEAR_MEMORIES: { request: { type: 'CLEAR_MEMORIES' }; response: { ok: true } };

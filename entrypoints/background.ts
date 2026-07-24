@@ -15,6 +15,7 @@ import {
   chromeStorageBackend,
   type MemoryEntry,
 } from '../core/memory/store.ts';
+import { UserMemoryStore } from '../core/memory/user-memory.ts';
 import { SkillStore, chromeSyncStorageBackend } from '../core/skills/store.ts';
 import { McpStore } from '../core/mcp/store.ts';
 import { ProjectStore } from '../core/project/store.ts';
@@ -45,7 +46,11 @@ const MAX_BRIDGE_MESSAGES = 20;
 const MAX_PENDING = 64;
 
 // 记忆存储（真机后端：chrome.storage.local）
+//   - memory：第2步自动抓取对话记忆（响应 popup 单数 GET_MEMORY / CLEAR_MEMORY）
+//   - userMemory：用户笔记型记忆（响应命令总线复数 GET_MEMORIES / SAVE_MEMORY 等）
+// 两套并存、互不干扰（方案 A）。
 const memory = new MemoryStore(chromeStorageBackend);
+const userMemory = new UserMemoryStore(chromeStorageBackend);
 
 // 命令总线依赖：技能走云同步后端、其余走本地后端，均复用现有 Store。
 // P1 新增 project/preset/settings 同构 Store，覆盖 13 页面全部 CRUD 命令面。
@@ -74,7 +79,7 @@ function broadcast(type: string): void {
 // 运行时命令注册表（命令总线核心，P0→P2 扩展为 24 个 typed-handler）。
 // 与现有桥接逻辑（GET_BRIDGE_HISTORY / GET_MEMORY 等）互不干扰，走独立通道。
 const runtimeCommandRegistry: RuntimeCommandRegistry = createRuntimeCommandRegistry({
-  typedHandlers: createDoubaoRuntimeHandlers({ memory, mcp, skill, project, preset, settings, broadcast }),
+  typedHandlers: createDoubaoRuntimeHandlers({ userMemory, mcp, skill, project, preset, settings, broadcast }),
 });
 
 // 关联 CONVERSATION_READY 与 ASSISTANT_TEXT：二者共享 requestId
