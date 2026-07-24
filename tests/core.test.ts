@@ -114,6 +114,22 @@ describe('augmentCompletionRequest（记忆注入）', () => {
       CONTEXT_SENTINEL + '[M]你好',
     );
   });
+  it('超长上下文仅裁剪上下文、绝不截断用户原文（回归：避免静默丢失用户提问）', () => {
+    const userText = '用户真实提问：请解释抗疏力土壤稳定剂的固化机理';
+    const hugeContext = CONTEXT_SENTINEL + 'X'.repeat(9000); // 远超 maxInjectionChars
+    const body: any = {
+      messages: [{ content_block: [{ content: { text_block: { text: userText } } }] }],
+    };
+    const r = augmentCompletionRequest(body, { context: hugeContext, maxInjectionChars: 8000 });
+    expect(r.changed).toBe(true);
+    const out = (r.body as any).messages[0].content_block[0].content.text_block.text as string;
+    // 用户原文必须完整保留（不被 slice 切掉）
+    expect(out.endsWith(userText)).toBe(true);
+    // 整体不超过上限（上下文被裁剪）
+    expect(out.length).toBeLessThanOrEqual(8000);
+    // 哨兵前缀仍在（上下文裁剪后仍含前缀）
+    expect(out.startsWith(CONTEXT_SENTINEL)).toBe(true);
+  });
 });
 
 describe('resolveChatSessionId / buildSessionUrl（BUG 修复回归）', () => {

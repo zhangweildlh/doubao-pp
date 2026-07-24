@@ -69,7 +69,15 @@ export function augmentCompletionRequest(
   }
   let injected = opts.context + tb.text;
   if (opts.maxInjectionChars && injected.length > opts.maxInjectionChars) {
-    injected = injected.slice(0, opts.maxInjectionChars);
+    // 超长时仅裁剪"上下文"部分，绝不截断用户原文（避免静默丢失用户提问）。
+    // 计算给用户原文预留后的剩余额度；上下文超长则截断上下文，用户文本始终完整保留。
+    const room = opts.maxInjectionChars - tb.text.length;
+    if (room > 0) {
+      injected = opts.context.slice(0, room) + tb.text;
+    } else {
+      // 极端：用户原文本身已超上限，放弃注入上下文，仅保留用户原文（fail-open）
+      injected = tb.text;
+    }
   }
   // 深拷贝后只改文本节点，其余（client_meta/option/ext 等）原样保留
   const newBody = structuredClone(typed) as DoubaoCompletionBody;
