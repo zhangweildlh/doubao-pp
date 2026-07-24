@@ -6,8 +6,11 @@
 //     故 host_permissions 仅为后续「后台直连」预留，当前保持最小化。
 //   - 移除 pyodide / skill 资源复制钩子（P0 阶段不移植 Python 沙箱与技能包）。
 //   - 保留 asciiJavaScriptOutputPlugin（确保中文文案在打包后不被破坏）。
+//   - 新增 @wxt-dev/module-react 模块、Tailwind v4 插件，以及 side_panel /
+//     web_accessible_resources 资源声明，为 sidePanel 骨架（P0）提供同构结构。
 
 import { defineConfig, type ConfigEnv, type UserManifest } from 'wxt';
+import tailwindcss from '@tailwindcss/vite';
 import type { Plugin } from 'vite';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -38,15 +41,35 @@ export function createManifest(env: ConfigEnv): UserManifest {
     name: MANIFEST_NAME,
     description: MANIFEST_DESCRIPTION,
     version: extensionVersion,
-    permissions: ['storage', 'alarms', 'contextMenus'],
-    optional_host_permissions: ['http://*/*', 'https://*/*'],
-    host_permissions: ['*://www.doubao.com/*', '*://doubao.com/*'],
+    // 保留 storage；新增命令总线与 sidePanel 所需权限（与 Deepseek-pp 同构）。
+    permissions: [
+      'storage',
+      'alarms',
+      'nativeMessaging',
+      'contextMenus',
+      'offscreen',
+      'debugger',
+      'tabs',
+      'identity',
+      'sidePanel',
+    ],
+    // 豆包网页版域名（https 限定）。后续「后台直连」可在此扩展。
+    host_permissions: [
+      'https://www.doubao.com/*',
+      'https://*.doubao.com/*',
+      'https://api.doubao.com/*',
+    ],
     // 路线 A 下扩展当前不向页面注入资源；按方案 §4.3 预留豆包域可访问资源声明，
     // 供后续侧边栏 / 浮窗 / 记忆面板注入扩展资源时使用。
     web_accessible_resources: [
       {
         resources: ['chunks/*'],
         matches: ['*://www.doubao.com/*', '*://doubao.com/*'],
+      },
+      // sidepanel.html 必须对所有主机可访问：全局浮窗球会在任意页面 iframe 中嵌入它。
+      {
+        resources: ['sidepanel.html'],
+        matches: ['<all_urls>'],
       },
     ],
     content_security_policy: {
@@ -56,6 +79,11 @@ export function createManifest(env: ConfigEnv): UserManifest {
       ? {
           action: {
             default_title: MANIFEST_ACTION_TITLE,
+            // popup 仍可用：wxt 会自动将 entrypoints/popup 设为 action 默认弹窗，
+            // 此处保留 title 即可，无需手动重复声明 default_popup。
+          },
+          side_panel: {
+            default_path: 'sidepanel.html',
           },
         }
       : {}),
@@ -105,8 +133,17 @@ function escapeNonAscii(source: string): string {
 export default defineConfig({
   outDir: 'dist',
   targetBrowsers: ['chrome', 'edge', 'firefox'],
+  // React 渲染 sidePanel（同构于 Deepseek-pp）。
+  modules: ['@wxt-dev/module-react'],
   manifest: createManifest,
+  hooks: {
+    // P0：预留构建后钩子；不拷贝 pyodide 资源（路线 B 默认禁用）。
+    // 后续阶段可在此接入技能包 / 资源复制。
+    'build:done'() {
+      // intentionally empty in P0
+    },
+  },
   vite: () => ({
-    plugins: [asciiJavaScriptOutputPlugin()],
+    plugins: [tailwindcss(), asciiJavaScriptOutputPlugin()],
   }),
 });

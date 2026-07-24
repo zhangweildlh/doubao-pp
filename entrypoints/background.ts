@@ -15,6 +15,21 @@ import {
   chromeStorageBackend,
   type MemoryEntry,
 } from '../core/memory/store.ts';
+import { SkillStore, chromeSyncStorageBackend } from '../core/skills/store.ts';
+import { McpStore } from '../core/mcp/store.ts';
+import {
+  decodeRuntimeMessageEnvelope,
+  createRuntimeMessageContext,
+  authorizeRuntimeMessage,
+  createRuntimeBoundaryErrorResponse,
+  type RuntimeMessageEnvelope,
+} from '../core/messaging/runtime-boundary.ts';
+import {
+  createRuntimeCommandRegistry,
+  getRuntimeCommandOwner,
+  type RuntimeCommandRegistry,
+} from '../core/messaging/runtime-command-registry.ts';
+import { createDoubaoRuntimeHandlers } from './background/runtime-handler.ts';
 
 // 模块级消息缓存，最多保留最近 20 条（调试用桥接历史）
 const bridgeMessages: Array<{ type: string; detail: unknown; receivedAt: number }> = [];
@@ -25,6 +40,16 @@ const MAX_PENDING = 64;
 
 // 记忆存储（真机后端：chrome.storage.local）
 const memory = new MemoryStore(chromeStorageBackend);
+
+// 命令总线依赖：技能走云同步后端、MCP 走本地后端，均复用现有 Store。
+const skill = new SkillStore(chromeSyncStorageBackend);
+const mcp = new McpStore(chromeStorageBackend);
+
+// 运行时命令注册表（命令总线核心，P0 接入 GET_MEMORIES / GET_SKILLS / GET_MCP_SERVERS）。
+// 与现有桥接逻辑（GET_BRIDGE_HISTORY / GET_MEMORY 等）互不干扰，走独立通道。
+const runtimeCommandRegistry: RuntimeCommandRegistry = createRuntimeCommandRegistry({
+  typedHandlers: createDoubaoRuntimeHandlers({ memory, mcp, skill }),
+});
 
 // 关联 CONVERSATION_READY 与 ASSISTANT_TEXT：二者共享 requestId
 type PendingMeta = {
@@ -103,6 +128,43 @@ function handleBridgeDetail(detail: Record<string, unknown>): void {
 }
 
 export default defineBackground(() => {
+  // —— 运行时命令总线（P0）：与下方桥接监听共存 ——
+  // 仅处理合法的运行时命令信封（GET_MEMORIES / GET_SKILLS / GET_MCP_SERVERS 等）；
+  // 非命令消息（桥接 / 现有 popup 请求）一律 return false，交给下方既有逻辑。
+  chrome.runtime.onMessage.addListener(
+    (
+      msg: unknown,
+      sender: chrome.runtime.MessageSender,
+      sendResponse: (response?: unknown) => void,
+    ) => {
+      let envelope: RuntimeMessageEnvelope;
+      try {
+        envelope = decodeRuntimeMessageEnvelope(msg);
+      } catch {
+        return false; // 非运行时命令信封，交还现有桥接监听
+      }
+      if (getRuntimeCommandOwner(envelope.type) === undefined) return false;
+
+      try {
+        const context = createRuntimeMessageContext(sender, {
+          runtimeId: chrome.runtime.id,
+          extensionOrigin: chrome.runtime.getURL('/'),
+          doubaoOrigin: new URL('https://www.doubao.com/').origin,
+        });
+        authorizeRuntimeMessage(envelope, context);
+        runtimeCommandRegistry
+          .dispatch(envelope, context)
+          .then(sendResponse)
+          .catch((error: unknown) =>
+            sendResponse(createRuntimeBoundaryErrorResponse(error, envelope)),
+          );
+      } catch (error) {
+        sendResponse(createRuntimeBoundaryErrorResponse(error, envelope));
+      }
+      return true;
+    },
+  );
+
   chrome.runtime.onMessage.addListener(
     (
       msg: Record<string, unknown>,

@@ -1,0 +1,427 @@
+@import 'tailwindcss';
+
+/*
+  Doubao-pp 侧边栏主题（P0，蓝绿系 / teal）。
+  复制自 Deepseek-pp 的 style.css 的 oklch 主题变量（--ds-*），并将品牌强调色
+  从深蓝（hue ≈ 264）微调为豆包风格的蓝绿（hue ≈ 195），中性色微调为轻青（≈ 210）。
+  仅保留 shell / tab / 路由兜底 / 占位页所需样式；会话、用量、弹窗等组件样式待
+  后续阶段按页面实现时补充（保持可搬运性审计清晰）。
+*/
+
+:root {
+  color-scheme: light;
+
+  /* Ink scale — primary text → quiet */
+  --ds-text:          oklch(0.24 0.020 210);
+  --ds-text-secondary: oklch(0.52 0.022 210);
+  --ds-text-tertiary: oklch(0.70 0.018 210);
+  --ds-text-on-primary: oklch(0.99 0.005 210);
+
+  /* Paper scale — surfaces, kept tinted not white */
+  --ds-shell-bg: oklch(0.975 0.006 210);
+  --ds-bg:       oklch(0.985 0.006 210);
+  --ds-card:     oklch(0.998 0.004 210);
+  --ds-surface:  oklch(0.965 0.008 210);
+  --ds-surface-hover: oklch(0.95 0.010 210);
+  --ds-bg-rgb: 250, 252, 253;
+
+  /* Lines — the elevation system, not shadows */
+  --ds-border:       oklch(0.90 0.012 210);
+  --ds-border-hover: oklch(0.84 0.016 210);
+  --ds-selected-border: oklch(0.62 0.13 195 / 0.30);
+
+  /* Accent — teal (blue-green), reserved for interaction only */
+  --ds-blue:        oklch(0.62 0.13 195);   /* ≈ 蓝绿 */
+  --ds-blue-hover:  oklch(0.56 0.14 196);
+  --ds-blue-soft:   oklch(0.68 0.11 195);
+  --ds-blue-light:  oklch(0.96 0.03 195);  /* pale wash for tinted panels */
+  --ds-blue-glow:   oklch(0.62 0.13 195 / 0.14);
+  --ds-blue-shadow: 0 1px 2px oklch(0.30 0.08 195 / 0.18);
+
+  /* Elevation — border + inset highlight instead of timid drop shadows. */
+  --ds-elevate-1: 0 0 0 1px var(--ds-border), inset 0 1px 0 oklch(1 0 0 / 0.05);
+  --ds-elevate-2: 0 0 0 1px var(--ds-border), 0 1px 2px oklch(0.25 0.03 195 / 0.05), inset 0 1px 0 oklch(1 0 0 / 0.06);
+  --ds-shadow-sm: var(--ds-elevate-1);
+  --ds-shadow-md: var(--ds-elevate-2);
+  --ds-shadow-lg: 0 0 0 1px var(--ds-border), 0 8px 24px oklch(0.25 0.05 195 / 0.10), inset 0 1px 0 oklch(1 0 0 / 0.07);
+
+  --ds-switch-thumb: oklch(0.998 0.004 210);
+  --ds-logo-gradient-end: oklch(0.72 0.13 195);
+
+  /* Shape language */
+  --radius-card: 0px;
+  --radius-ctrl: 6px;
+  --radius-pill: 999px;
+
+  /* Semantic colors */
+  --ds-danger:            oklch(0.64 0.22 25);
+  --ds-danger-bg:         oklch(0.96 0.03 25);
+  --ds-danger-bg-hover:   oklch(0.93 0.05 25);
+  --ds-danger-border:     oklch(0.88 0.06 25);
+  --ds-danger-border-hover: oklch(0.82 0.09 25);
+  --ds-success:           oklch(0.70 0.15 162);
+  --ds-success-bg:        oklch(0.96 0.03 162);
+  --ds-success-border:    oklch(0.88 0.07 162);
+  --ds-warning:           oklch(0.75 0.15 75);
+  --ds-warning-bg:        oklch(0.97 0.03 75);
+  --ds-warning-border:    oklch(0.90 0.06 75);
+  --ds-info:              oklch(0.62 0.17 250);
+  --ds-info-bg:           oklch(0.96 0.03 250);
+  --ds-info-border:       oklch(0.88 0.05 250);
+  --ds-purple:            oklch(0.62 0.18 300);
+  --ds-purple-bg:         oklch(0.96 0.03 300);
+  --ds-purple-border:     oklch(0.88 0.05 300);
+
+  --ds-type-user: var(--ds-info);
+  --ds-type-user-bg: var(--ds-info-bg);
+  --ds-type-user-border: var(--ds-info-border);
+  --ds-type-feedback: var(--ds-warning);
+  --ds-type-feedback-bg: var(--ds-warning-bg);
+  --ds-type-feedback-border: var(--ds-warning-border);
+  --ds-type-topic: var(--ds-purple);
+  --ds-type-topic-bg: var(--ds-purple-bg);
+  --ds-type-topic-border: var(--ds-purple-border);
+  --ds-type-reference: var(--ds-success);
+  --ds-type-reference-bg: var(--ds-success-bg);
+  --ds-type-reference-border: var(--ds-success-border);
+}
+
+/* Dark theme — defined once, applied by both explicit override and system. */
+:root[data-theme='dark'] {
+  color-scheme: dark;
+
+  --ds-text:          oklch(0.93 0.014 210);
+  --ds-text-secondary: oklch(0.76 0.016 210);
+  --ds-text-tertiary: oklch(0.60 0.016 210);
+  --ds-text-on-primary: oklch(0.18 0.02 210);
+
+  --ds-shell-bg: oklch(0.17 0.012 210);
+  --ds-bg:       oklch(0.19 0.012 210);
+  --ds-card:     oklch(0.22 0.014 210);
+  --ds-surface:  oklch(0.25 0.014 210);
+  --ds-surface-hover: oklch(0.29 0.015 210);
+  --ds-bg-rgb: 36, 40, 46;
+
+  --ds-border:       oklch(0.32 0.014 210);
+  --ds-border-hover: oklch(0.40 0.016 210);
+  --ds-selected-border: oklch(0.75 0.11 195 / 0.42);
+
+  --ds-blue:        oklch(0.75 0.12 195);
+  --ds-blue-hover:  oklch(0.82 0.11 196);
+  --ds-blue-soft:   oklch(0.80 0.10 195);
+  --ds-blue-light:  oklch(0.30 0.06 195 / 0.55);
+  --ds-blue-glow:   oklch(0.75 0.12 195 / 0.24);
+  --ds-blue-shadow: 0 1px 2px oklch(0.15 0.05 195 / 0.5);
+
+  --ds-elevate-1: 0 0 0 1px var(--ds-border), inset 0 1px 0 oklch(1 0 0 / 0.04);
+  --ds-elevate-2: 0 0 0 1px var(--ds-border), 0 1px 3px oklch(0.05 0.01 210 / 0.4), inset 0 1px 0 oklch(1 0 0 / 0.05);
+  --ds-shadow-sm: var(--ds-elevate-1);
+  --ds-shadow-md: var(--ds-elevate-2);
+  --ds-shadow-lg: 0 0 0 1px var(--ds-border), 0 12px 32px oklch(0.02 0.01 210 / 0.5), inset 0 1px 0 oklch(1 0 0 / 0.06);
+
+  --ds-switch-thumb: oklch(0.998 0.004 210);
+  --ds-logo-gradient-end: oklch(0.78 0.12 195);
+
+  --ds-danger:            oklch(0.72 0.18 25);
+  --ds-danger-bg:         oklch(0.30 0.06 25 / 0.5);
+  --ds-danger-bg-hover:   oklch(0.34 0.08 25 / 0.6);
+  --ds-danger-border:     oklch(0.55 0.12 25 / 0.5);
+  --ds-danger-border-hover: oklch(0.62 0.14 25 / 0.6);
+  --ds-success:           oklch(0.78 0.14 162);
+  --ds-success-bg:        oklch(0.32 0.05 162 / 0.45);
+  --ds-success-border:    oklch(0.55 0.10 162 / 0.5);
+  --ds-warning:           oklch(0.80 0.14 75);
+  --ds-warning-bg:        oklch(0.34 0.06 75 / 0.45);
+  --ds-warning-border:    oklch(0.58 0.10 75 / 0.5);
+  --ds-info:              oklch(0.75 0.13 250);
+  --ds-info-bg:           oklch(0.32 0.05 250 / 0.45);
+  --ds-info-border:       oklch(0.55 0.09 250 / 0.5);
+  --ds-purple:            oklch(0.74 0.14 300);
+  --ds-purple-bg:         oklch(0.33 0.05 300 / 0.45);
+  --ds-purple-border:     oklch(0.56 0.10 300 / 0.5);
+}
+
+/* System-dark fallback when no explicit override is set. Mirrors [data-theme='dark']. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    color-scheme: dark;
+    --ds-text:          oklch(0.93 0.014 210);
+    --ds-text-secondary: oklch(0.76 0.016 210);
+    --ds-text-tertiary: oklch(0.60 0.016 210);
+    --ds-text-on-primary: oklch(0.18 0.02 210);
+    --ds-shell-bg: oklch(0.17 0.012 210);
+    --ds-bg:       oklch(0.19 0.012 210);
+    --ds-card:     oklch(0.22 0.014 210);
+    --ds-surface:  oklch(0.25 0.014 210);
+    --ds-surface-hover: oklch(0.29 0.015 210);
+    --ds-bg-rgb: 36, 40, 46;
+    --ds-border:       oklch(0.32 0.014 210);
+    --ds-border-hover: oklch(0.40 0.016 210);
+    --ds-selected-border: oklch(0.75 0.11 195 / 0.42);
+    --ds-blue:        oklch(0.75 0.12 195);
+    --ds-blue-hover:  oklch(0.82 0.11 196);
+    --ds-blue-soft:   oklch(0.80 0.10 195);
+    --ds-blue-light:  oklch(0.30 0.06 195 / 0.55);
+    --ds-blue-glow:   oklch(0.75 0.12 195 / 0.24);
+    --ds-blue-shadow: 0 1px 2px oklch(0.15 0.05 195 / 0.5);
+    --ds-elevate-1: 0 0 0 1px var(--ds-border), inset 0 1px 0 oklch(1 0 0 / 0.04);
+    --ds-elevate-2: 0 0 0 1px var(--ds-border), 0 1px 3px oklch(0.05 0.01 210 / 0.4), inset 0 1px 0 oklch(1 0 0 / 0.05);
+    --ds-shadow-sm: var(--ds-elevate-1);
+    --ds-shadow-md: var(--ds-elevate-2);
+    --ds-shadow-lg: 0 0 0 1px var(--ds-border), 0 12px 32px oklch(0.02 0.01 210 / 0.5), inset 0 1px 0 oklch(1 0 0 / 0.06);
+    --ds-switch-thumb: oklch(0.998 0.004 210);
+    --ds-logo-gradient-end: oklch(0.78 0.12 195);
+    --ds-danger:            oklch(0.72 0.18 25);
+    --ds-danger-bg:         oklch(0.30 0.06 25 / 0.5);
+    --ds-danger-bg-hover:   oklch(0.34 0.08 25 / 0.6);
+    --ds-danger-border:     oklch(0.55 0.12 25 / 0.5);
+    --ds-danger-border-hover: oklch(0.62 0.14 25 / 0.6);
+    --ds-success:           oklch(0.78 0.14 162);
+    --ds-success-bg:        oklch(0.32 0.05 162 / 0.45);
+    --ds-success-border:    oklch(0.55 0.10 162 / 0.5);
+    --ds-warning:           oklch(0.80 0.14 75);
+    --ds-warning-bg:        oklch(0.34 0.06 75 / 0.45);
+    --ds-warning-border:    oklch(0.58 0.10 75 / 0.5);
+    --ds-info:              oklch(0.75 0.13 250);
+    --ds-info-bg:           oklch(0.32 0.05 250 / 0.45);
+    --ds-info-border:       oklch(0.55 0.09 250 / 0.5);
+    --ds-purple:            oklch(0.74 0.14 300);
+    --ds-purple-bg:         oklch(0.33 0.05 300 / 0.45);
+    --ds-purple-border:     oklch(0.56 0.10 300 / 0.5);
+  }
+}
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans SC', 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  font-feature-settings: 'tnum' 1, 'cv11' 1;
+  font-variant-numeric: tabular-nums;
+  background: var(--ds-shell-bg);
+  color: var(--ds-text);
+  min-width: 320px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+::-webkit-scrollbar {
+  width: 4px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ds-border-hover);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ds-text-tertiary);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0.01ms !important;
+  }
+}
+
+input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--ds-blue) !important;
+  box-shadow: 0 0 0 3px var(--ds-blue-glow) !important;
+}
+
+input::placeholder, textarea::placeholder {
+  color: var(--ds-text-tertiary);
+}
+
+input,
+textarea,
+select {
+  color-scheme: inherit;
+}
+
+input[type='checkbox'],
+input[type='range'] {
+  accent-color: var(--ds-blue);
+}
+
+.ds-app-shell {
+  display: flex;
+  height: 100vh;
+  min-width: 320px;
+  flex-direction: column;
+  background: var(--ds-shell-bg);
+}
+
+.ds-app-main {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  background: var(--ds-bg);
+}
+
+/* Top tabs */
+.side-tabs {
+  display: flex;
+  flex: 0 0 44px;
+  align-items: flex-end;
+  gap: 4px;
+  min-height: 44px;
+  padding: 0 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--ds-border);
+  background: var(--ds-card);
+  -webkit-overflow-scrolling: touch;
+}
+
+.side-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.side-tab {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 52px;
+  height: 44px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--ds-text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.side-tab:hover {
+  background: color-mix(in srgb, var(--ds-surface) 62%, transparent);
+  color: var(--ds-text);
+}
+
+.side-tab-active,
+.side-tab-active:hover {
+  color: var(--ds-blue);
+}
+
+.side-tab-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+}
+
+.side-tab-label {
+  white-space: nowrap;
+  word-break: keep-all;
+}
+
+.side-tab-indicator {
+  position: absolute;
+  right: 10px;
+  bottom: -1px;
+  left: 10px;
+  height: 2px;
+  border-radius: 0;
+  background: var(--ds-blue);
+}
+
+@media (min-width: 520px) {
+  .side-tabs {
+    justify-content: space-between;
+    gap: 4px;
+    padding-right: 14px;
+    padding-left: 14px;
+  }
+
+  .side-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    padding-right: 8px;
+    padding-left: 8px;
+  }
+}
+
+@media (max-width: 420px) {
+  .side-tabs {
+    gap: 0;
+    padding-right: 6px;
+    padding-left: 6px;
+  }
+
+  .side-tab {
+    min-width: 0;
+    height: 40px;
+    gap: 3px;
+    padding-right: 6px;
+    padding-left: 6px;
+    font-size: 12px;
+  }
+
+  .side-tab-icon {
+    width: 13px;
+    height: 13px;
+  }
+}
+
+/* Route fallback (Suspense) */
+.ds-route-fallback {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--ds-text-tertiary);
+  font-size: 13px;
+}
+
+.ds-route-fallback-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--ds-blue);
+  box-shadow: 0 0 0 3px var(--ds-blue-glow);
+  animation: ds-fallback-pulse 1s ease-in-out infinite;
+}
+
+@keyframes ds-fallback-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
+}
+
+/* Placeholder pages */
+.ds-page {
+  padding: 16px 14px 28px;
+}
+
+.ds-page h2 {
+  margin: 0 0 8px;
+  color: var(--ds-text);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+}
+
+.ds-page p {
+  margin: 0;
+  max-width: 34rem;
+  color: var(--ds-text-secondary);
+  font-size: 12px;
+  line-height: 1.6;
+}
