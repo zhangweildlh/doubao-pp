@@ -36,6 +36,16 @@ const pendingConv = new Map<string, PendingMeta>();
 let lastConversationId: string | null = null;
 
 function handleBridgeDetail(detail: Record<string, unknown>): void {
+  // 所有桥接事件一律存入缓存（供浮窗/popup 查询），不受后续 early return 影响
+  bridgeMessages.push({
+    type: BRIDGE_EVENT,
+    detail,
+    receivedAt: Date.now(),
+  });
+  if (bridgeMessages.length > MAX_BRIDGE_MESSAGES) {
+    bridgeMessages.shift();
+  }
+
   const evtType = detail.type;
 
   // CONVERSATION_READY：记录会话元信息，供后续 ASSISTANT_TEXT 关联
@@ -89,14 +99,6 @@ function handleBridgeDetail(detail: Record<string, unknown>): void {
   // 仅对 REQUEST_AUGMENTED / CONVERSATION_READY / ERROR 等元信息事件记录便于排障。
   if (detail.type !== 'STREAMING_TEXT' && detail.type !== 'ASSISTANT_TEXT') {
     console.info('[Doubao-pp][bridge]', detail.type, detail);
-  }
-  bridgeMessages.push({
-    type: BRIDGE_EVENT,
-    detail,
-    receivedAt: Date.now(),
-  });
-  if (bridgeMessages.length > MAX_BRIDGE_MESSAGES) {
-    bridgeMessages.shift();
   }
 }
 

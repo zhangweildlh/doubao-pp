@@ -213,6 +213,25 @@ export default defineContentScript({
     };
     window.addEventListener(BRIDGE_EVENT, onBridge);
 
+    // 竞态修复：document_idle 晚于 document_start，可能错过 main-world 已派发的事件。
+    // 初始化时主动向 background 查询已有桥接历史，回放补齐状态（与 popup 协议一致）。
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      chrome.runtime.sendMessage(
+        { type: 'GET_BRIDGE_HISTORY' },
+        (history: Array<{ type: string; detail: unknown; receivedAt: number }> | undefined) => {
+          if (!history || history.length === 0) return;
+          // 按时间正序回放（最旧先来），模拟事件到达顺序
+          const sorted = [...history].sort((a, b) => a.receivedAt - b.receivedAt);
+          for (const item of sorted) {
+            if (item.detail && typeof item.detail === 'object') {
+              state = reduceBridgeEvent(state, item.detail as BridgeDetail);
+            }
+          }
+          renderLive();
+        },
+      );
+    }
+
     renderLive();
     refreshMemory();
 
