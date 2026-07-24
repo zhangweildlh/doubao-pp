@@ -15,6 +15,11 @@
 // 注：defineContentScript 由 wxt 自动导入（auto-import），无需显式 import。
 
 import { BRIDGE_EVENT } from '../core/provider/doubao/dom-hook.ts';
+import {
+  CTX_REQ_CHANNEL,
+  CTX_RESP_CHANNEL,
+  buildContextResponse,
+} from '../core/provider/doubao/injection.ts';
 
 export default defineContentScript({
   matches: ['*://www.doubao.com/chat/*'],
@@ -35,6 +40,24 @@ export default defineContentScript({
         // 扩展上下文异常时静默忽略
       }
     });
-    console.info('[Doubao-pp] 隔离世界中继已就绪（MAIN→background 桥接）');
+
+    // 第 6 步：MAIN world（360Chrome 可能无 chrome.storage）经跨世界请求回读注入上下文。
+    // ISOLATED relay 具完整 chrome.storage，读后原路 postMessage 回传 MAIN world。
+    window.addEventListener('message', (e: MessageEvent) => {
+      const data = e.data as Record<string, unknown> | null;
+      if (!data || data[CTX_REQ_CHANNEL] !== true) return;
+      const reqId = typeof data.reqId === 'string' ? data.reqId : '';
+      if (!reqId) return;
+      buildContextResponse(reqId)
+        .then((payload) => {
+          window.postMessage(payload, '*');
+        })
+        .catch(() => {
+          // fail-open：读取出错也回传空上下文，保证 MAIN world 不悬挂
+          window.postMessage({ [CTX_RESP_CHANNEL]: true, reqId, context: '' }, '*');
+        });
+    });
+
+    console.info('[Doubao-pp] 隔离世界中继已就绪（MAIN→background 桥接 / 上下文回读）');
   },
 });
