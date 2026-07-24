@@ -79,7 +79,7 @@ npm run build:all      # 构建 chrome / edge / firefox
 node scripts/port-from-upstream.mjs --dry   # 预演上游移植替换（不写文件）
 ```
 
-> **远端编译（CI）**：推送到 `main` 或推送 `v*` 标签会触发 GitHub Actions，自动执行 `compile` + `build:chrome`，并将 `dist/chrome-mv3` 作为构建产物（artifact）上传，可在 Actions 运行页下载。Release 仅自取构建产物，不发布到应用商店。
+> **远端编译（CI / Release）**：推送到 `main`（或开 PR）触发 `CI` 工作流，自动执行 `compile` + `test` + `build:chrome` 并上传 `dist/chrome-mv3` 产物；推送 `v*` 标签触发 `Release Extension` 工作流，自动构建 Chrome/Edge/Firefox 并打成 zip，创建 GitHub Release 附带各浏览器产物。两者均在 GitHub Actions 远端编译，不发布到应用商店。
 
 ## 技术事实基线（来自 phaseB_sse.json 实算）
 

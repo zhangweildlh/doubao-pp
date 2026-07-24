@@ -1,0 +1,106 @@
+name: Release Extension
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag, e.g. v1.11.6.1'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Build and publish release (downloadable artifacts)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref }}
+          fetch-depth: 0
+
+      - name: Validate release ref
+        shell: bash
+        env:
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          TAG="${INPUT_TAG:-${GITHUB_REF_NAME}}"
+          if ! git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Release tag $TAG does not exist in the checked-out repository" >&2
+            exit 1
+          fi
+          TAG_SHA="$(git rev-list -n 1 "$TAG")"
+          HEAD_SHA="$(git rev-parse HEAD)"
+          if [ "$HEAD_SHA" != "$TAG_SHA" ]; then
+            echo "Checked-out HEAD $HEAD_SHA does not match release tag $TAG ($TAG_SHA)" >&2
+            exit 1
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Quality gates
+        run: npm run compile && npm run test
+
+      - name: Build & zip all browsers
+        run: |
+          npm run zip:chrome
+          npm run zip:edge
+          npm run zip:firefox
+
+      - name: Locate zips
+        id: package
+        shell: bash
+        run: |
+          mapfile -t ZIP_FILES < <(find dist -type f -name '*.zip' | sort)
+          if [ "${#ZIP_FILES[@]}" -lt 1 ]; then
+            echo "No zip packages found in dist/" >&2
+            printf '%s\n' "${ZIP_FILES[@]}" >&2
+            exit 1
+          fi
+          {
+            echo "zip_files<<EOF"
+            printf '%s\n' "${ZIP_FILES[@]}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ZIP_FILES: ${{ steps.package.outputs.zip_files }}
+          INPUT_TAG: ${{ github.event.inputs.tag }}
+        run: |
+          TAG="${INPUT_TAG:-${GITHUB_REF_NAME}}"
+          VERSION="${TAG#v}"
+          TITLE="Doubao-pp ${VERSION}"
+          PACKAGE_VERSION="$(node -p "require('./package.json').version")"
+          mapfile -t RELEASE_FILES <<< "$ZIP_FILES"
+
+          if [ "$PACKAGE_VERSION" != "$VERSION" ]; then
+            echo "package.json version $PACKAGE_VERSION does not match release tag $TAG" >&2
+            exit 1
+          fi
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "${RELEASE_FILES[@]}" --clobber
+          else
+            gh release create "$TAG" "${RELEASE_FILES[@]}" --title "$TITLE" --generate-notes
+          fi
