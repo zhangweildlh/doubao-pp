@@ -25,7 +25,8 @@ export interface DoubaoCompletionBody {
 }
 
 export interface AugmentOptions {
-  marker: string;
+  /** 完整待注入上下文（含稳定哨兵前缀 CONTEXT_SENTINEL），将置于用户文本之前 */
+  context: string;
   // 预留：超过该长度的注入会被裁剪，避免破坏请求
   maxInjectionChars?: number;
 }
@@ -35,6 +36,12 @@ export interface AugmentResult {
   changed: boolean;
   injectedText: string;
 }
+
+/**
+ * 注入上下文稳定哨兵：幂等判定依据（不随动态内容变化，避免重试时误判）。
+ * 同时作为"记忆/技能已注入"的可识别标记（供浮窗/验证读取）。
+ */
+export const CONTEXT_SENTINEL = '[Doubao-pp 上下文] ';
 
 // 定位路径（实测 §2.3 / 真实抓包核对）：
 //   body.messages[0].content_block[0].content.text_block.text
@@ -56,11 +63,11 @@ export function augmentCompletionRequest(
   if (!tb || typeof tb.text !== 'string') {
     return { body, changed: false, injectedText: '' };
   }
-  const marker = opts.marker;
-  if (tb.text.indexOf(marker) !== -1) {
-    return { body, changed: false, injectedText: '' }; // 已注入，幂等
+  // 幂等：已含哨兵前缀即视为已注入，避免重复注入（哨兵稳定，不受动态内容影响）
+  if (tb.text.indexOf(CONTEXT_SENTINEL) !== -1) {
+    return { body, changed: false, injectedText: '' };
   }
-  let injected = marker + tb.text;
+  let injected = opts.context + tb.text;
   if (opts.maxInjectionChars && injected.length > opts.maxInjectionChars) {
     injected = injected.slice(0, opts.maxInjectionChars);
   }

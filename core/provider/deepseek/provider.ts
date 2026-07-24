@@ -15,8 +15,9 @@ export function createDeepseekProvider(): ChatProvider {
     matchWebRoute(url: string): boolean {
       return url.includes('chat.deepseek.com') || url.includes('api.deepseek.com');
     },
-    augmentCompletionRequest(body: unknown): unknown {
+    augmentCompletionRequest(body: unknown, _context?: string): unknown {
       // 原 deepseek 增强逻辑（本原型不展开）；保持契约签名一致。
+      // _context 为豆包侧注入上下文（记忆/技能/MCP），deepseek 占位实现忽略。
       return body;
     },
     parseSSEStream(_resp: Response): AsyncGenerator<StreamEvent> {

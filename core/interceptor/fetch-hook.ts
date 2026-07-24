@@ -70,7 +70,11 @@ export function installFetchHook(callbacks: FetchHookCallbacks = {}): void {
     if (init?.body != null && typeof init.body === 'string') {
       try {
         const parsed = JSON.parse(init.body) as unknown;
-        const augmented = provider.augmentCompletionRequest(parsed);
+        // 增强前异步加载注入上下文（记忆/技能/MCP）；无此方法或失败时为空串
+        const contextText = provider.loadInjectionContext
+          ? await provider.loadInjectionContext()
+          : '';
+        const augmented = provider.augmentCompletionRequest(parsed, contextText);
         finalInit = { ...(init as RequestInit), body: JSON.stringify(augmented) };
         callbacks.onRequestBody?.(augmented, ctx);
         bridgeEmit({ type: 'REQUEST_AUGMENTED', requestId: ctx.requestId });

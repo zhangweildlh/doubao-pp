@@ -4,6 +4,7 @@
 
 import { describe, it, expect } from 'vitest';
 import { createDoubaoProvider } from '../core/provider/doubao/provider.ts';
+import { CONTEXT_SENTINEL } from '../core/provider/doubao/request-aug.ts';
 
 describe('createDoubaoProvider 契约（集成）', () => {
   const p = createDoubaoProvider();
@@ -26,7 +27,7 @@ describe('createDoubaoProvider 契约（集成）', () => {
     const out = p.augmentCompletionRequest(body) as any;
     expect(out).not.toBe(body);
     const txt = out.messages[0].content_block[0].content.text_block.text as string;
-    expect(txt).toContain('[来自Doubao-pp记忆系统的上下文]');
+    expect(txt).toContain(CONTEXT_SENTINEL);
     expect(txt).toContain('你好');
     // 原 body 不被修改（深拷贝增强）
     expect((body as any).messages[0].content_block[0].content.text_block.text).toBe('你好');

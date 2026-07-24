@@ -11,12 +11,10 @@ import {
   UI_FRAMEWORK_CANDIDATES,
 } from './contracts.ts';
 import { parseDoubaoSSE } from './stream-codec.ts';
-import { augmentCompletionRequest } from './request-aug.ts';
+import { augmentCompletionRequest, CONTEXT_SENTINEL } from './request-aug.ts';
 import { resolveChatSessionId, buildSessionUrl } from './chat-session.ts';
 import { isAuthed } from './auth-state.ts';
-
-// 记忆 / Skills 注入标记（对齐验证②的 INJECT_TEXT）
-const MEMORY_MARKER = '[来自Doubao-pp记忆系统的上下文] ';
+import { loadInjectionContext } from './injection.ts';
 
 export function createDoubaoProvider(): ChatProvider {
   return {
@@ -30,7 +28,13 @@ export function createDoubaoProvider(): ChatProvider {
       return url.includes('/chat/completion') && url.startsWith(base);
     },
 
-    augmentCompletionRequest(body: unknown): unknown {
+    // 异步加载注入上下文（记忆 + 技能 + MCP），供增强前读取。
+    // 失败 fail-open：返回空串时增强退化为仅注入哨兵前缀。
+    async loadInjectionContext(): Promise<string> {
+      return loadInjectionContext();
+    },
+
+    augmentCompletionRequest(body: unknown, context?: string): unknown {
       // 防御校验 G1：body 必须是非空对象且含 messages 数组，否则跳过增强
       if (
         !body ||
@@ -48,7 +52,12 @@ export function createDoubaoProvider(): ChatProvider {
 
       // 用 try-catch 包裹增强逻辑，异常时退回原请求体，绝不向上抛出
       try {
-        const r = augmentCompletionRequest(body, { marker: MEMORY_MARKER });
+        const dynamic = context && context.length > 0 ? context : '';
+        const fullContext = CONTEXT_SENTINEL + dynamic;
+        const r = augmentCompletionRequest(body, {
+          context: fullContext,
+          maxInjectionChars: 8000,
+        });
         return r.body;
       } catch (err) {
         console.error('[Doubao-pp] 增强失败，退回原请求', err);

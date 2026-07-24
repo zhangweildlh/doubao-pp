@@ -8,6 +8,7 @@
 
 import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { installFetchHook } from '../core/interceptor/fetch-hook.ts';
+import { CONTEXT_SENTINEL } from '../core/provider/doubao/request-aug.ts';
 
 describe('fetch-hook 拦截契约（集成）', () => {
   let capturedBody: string | null = null;
@@ -51,7 +52,7 @@ describe('fetch-hook 拦截契约（集成）', () => {
     expect(capturedBody).not.toBeNull();
     const parsed = JSON.parse(capturedBody as string);
     const txt = parsed.messages[0].content_block[0].content.text_block.text as string;
-    expect(txt).toContain('[来自Doubao-pp记忆系统的上下文]');
+    expect(txt).toContain(CONTEXT_SENTINEL);
     expect(txt).toContain('你好');
   });
 

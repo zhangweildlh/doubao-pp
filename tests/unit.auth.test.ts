@@ -3,6 +3,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { readPageAuth } from '../core/provider/doubao/auth.ts';
 import { setAuthed, isAuthed } from '../core/provider/doubao/auth-state.ts';
 import { createDoubaoProvider } from '../core/provider/doubao/provider.ts';
+import { CONTEXT_SENTINEL } from '../core/provider/doubao/request-aug.ts';
 
 afterEach(() => setAuthed(true)); // 还原 fail-open 默认，避免影响其他用例
 
@@ -47,7 +48,7 @@ describe('provider 注入受 auth 门禁控制', () => {
     const out = p.augmentCompletionRequest(body) as any;
     expect(
       (out.messages[0].content_block[0].content.text_block.text as string),
-    ).toContain('[来自Doubao-pp记忆系统的上下文]');
+    ).toContain(CONTEXT_SENTINEL);
   });
 
   it('未登录 → 跳过注入，原样返回', () => {

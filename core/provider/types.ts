@@ -31,7 +31,12 @@ export interface ChatProvider {
   matchWebRoute(url: string, method: string, baseUrl: string): boolean;
 
   // ★ 路线 A：原地增强（非检测）——只改文本节点，不重建请求体、不自己算签名
-  augmentCompletionRequest(body: unknown): unknown;
+  //   context 为可选注入上下文（记忆/技能/MCP），由 loadInjectionContext 提供
+  augmentCompletionRequest(body: unknown, context?: string): unknown;
+
+  // 可选：增强前异步加载注入上下文（记忆/技能/MCP）。
+  // 返回空串表示无需注入；fetch-hook 会在增强前 await 此方法（若存在）。
+  loadInjectionContext?(): Promise<string>;
 
   // 命名事件 → 增量文本（替换原 consumeDeepSeekSseFrames）
   parseSSEStream(resp: Response): AsyncGenerator<StreamEvent>;

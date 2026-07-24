@@ -13,6 +13,13 @@
 
 import { BRIDGE_EVENT, type BridgeDetail } from '../core/provider/doubao/dom-hook.ts';
 import { chromeStorageBackend, MEMORY_STORAGE_KEY, type MemoryEntry } from '../core/memory/store.ts';
+import {
+  SkillStore,
+  chromeSyncStorageBackend,
+  BUILTIN_SKILLS,
+  type SkillEntry,
+} from '../core/skills/store.ts';
+import { McpStore, type McpToolEntry } from '../core/mcp/store.ts';
 import { createInitialState, reduceBridgeEvent, type FloatingState } from '../core/ui/floating-state.ts';
 
 // HTML 转义，防 XSS（与 popup 一致）
@@ -86,28 +93,33 @@ export default defineContentScript({
         <div class="dp-tabs">
           <span class="dp-tab active" data-tab="live">实时</span>
           <span class="dp-tab" data-tab="mem">记忆</span>
+          <span class="dp-tab" data-tab="skill">技能/MCP</span>
         </div>
         <div class="dp-body" id="dp-live"></div>
         <div class="dp-body" id="dp-mem" style="display:none"></div>
+        <div class="dp-body" id="dp-skill" style="display:none"></div>
       </div>`;
 
     const fab = container.querySelector('.dp-fab') as HTMLButtonElement;
     const panel = container.querySelector('.dp-panel') as HTMLElement;
     const liveEl = container.querySelector('#dp-live') as HTMLElement;
     const memEl = container.querySelector('#dp-mem') as HTMLElement;
+    const skillEl = container.querySelector('#dp-skill') as HTMLElement;
     const injectEl = container.querySelector('#dp-inject') as HTMLElement;
 
-    const showTab = (tab: 'live' | 'mem') => {
+    const showTab = (tab: 'live' | 'mem' | 'skill') => {
       container.querySelectorAll('.dp-tab').forEach((t) => {
         const el = t as HTMLElement;
         el.classList.toggle('active', el.dataset.tab === tab);
       });
       liveEl.style.display = tab === 'live' ? 'block' : 'none';
       memEl.style.display = tab === 'mem' ? 'block' : 'none';
+      skillEl.style.display = tab === 'skill' ? 'block' : 'none';
       if (tab === 'mem') refreshMemory();
+      if (tab === 'skill') refreshSkills();
     };
     container.querySelectorAll('.dp-tab').forEach((t) => {
-      t.addEventListener('click', () => showTab((t as HTMLElement).dataset.tab as 'live' | 'mem'));
+      t.addEventListener('click', () => showTab((t as HTMLElement).dataset.tab as 'live' | 'mem' | 'skill'));
     });
     fab.addEventListener('click', () => {
       panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
@@ -152,6 +164,45 @@ export default defineContentScript({
         })
         .catch(() => {
           memEl.innerHTML = '<div class="dp-muted">读取记忆失败</div>';
+        });
+    };
+
+    const refreshSkills = () => {
+      if (typeof chrome === 'undefined' || !chrome.storage) {
+        skillEl.innerHTML = '<div class="dp-muted">无存储权限</div>';
+        return;
+      }
+      const skillStore = new SkillStore(chromeSyncStorageBackend);
+      const mcpStore = new McpStore(chromeStorageBackend);
+      Promise.all([skillStore.getAll(), mcpStore.getAll()])
+        .then(([userSkills, tools]) => {
+          const allSkills: SkillEntry[] = [...BUILTIN_SKILLS, ...userSkills];
+          const enabledSkills = allSkills.filter((s) => s.enabled);
+          const enabledTools = tools.filter((t) => t.enabled);
+          const syncOn = !!chrome.storage?.sync;
+          const rows: string[] = [];
+          rows.push(
+            `<div class="dp-row dp-muted">技能（已启用 ${enabledSkills.length}/${allSkills.length}，云同步: ${syncOn ? '开' : '关'}）</div>`,
+          );
+          if (enabledSkills.length === 0) {
+            rows.push('<div class="dp-muted">未启用任何技能</div>');
+          } else {
+            for (const s of enabledSkills) {
+              rows.push(`<div class="dp-row"><b>${esc(s.name)}</b> <span class="dp-muted">${esc(s.id.startsWith('builtin-') ? '内建' : '用户')}</span><div class="dp-stream">${esc(s.content)}</div></div>`);
+            }
+          }
+          rows.push(`<div class="dp-row dp-muted">MCP 工具（已启用 ${enabledTools.length}/${tools.length}，传输默认禁用）</div>`);
+          if (enabledTools.length === 0) {
+            rows.push('<div class="dp-muted">未注册任何 MCP 工具</div>');
+          } else {
+            for (const t of enabledTools) {
+              rows.push(`<div class="dp-row"><b>${esc(t.name)}</b><div class="dp-stream">${esc(t.description)}</div></div>`);
+            }
+          }
+          skillEl.innerHTML = rows.join('');
+        })
+        .catch(() => {
+          skillEl.innerHTML = '<div class="dp-muted">读取技能失败</div>';
         });
     };
 

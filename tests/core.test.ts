@@ -12,7 +12,7 @@ import {
   collectStreamingText,
   extractBrief,
 } from '../core/provider/doubao/stream-codec.ts';
-import { augmentCompletionRequest } from '../core/provider/doubao/request-aug.ts';
+import { augmentCompletionRequest, CONTEXT_SENTINEL } from '../core/provider/doubao/request-aug.ts';
 import { resolveChatSessionId, buildSessionUrl } from '../core/provider/doubao/chat-session.ts';
 import {
   getUIFramework,
@@ -81,16 +81,20 @@ describe('collectStreamingText', () => {
 });
 
 describe('augmentCompletionRequest（记忆注入）', () => {
-  const opts = { marker: '[M]' };
+  const opts = { context: CONTEXT_SENTINEL + '[M]' };
 
-  it('在用户文本前注入标记', () => {
+  it('在用户文本前注入上下文', () => {
     const body = { messages: [{ content_block: [{ content: { text_block: { text: '你好' } } }] }] };
     const r = augmentCompletionRequest(body, opts);
     expect(r.changed).toBe(true);
-    expect((r.body as any).messages[0].content_block[0].content.text_block.text).toBe('[M]你好');
+    expect((r.body as any).messages[0].content_block[0].content.text_block.text).toBe(
+      CONTEXT_SENTINEL + '[M]你好',
+    );
   });
-  it('已含标记则幂等跳过', () => {
-    const body = { messages: [{ content_block: [{ content: { text_block: { text: '[M]你好' } } }] }] };
+  it('已含哨兵则幂等跳过', () => {
+    const body = {
+      messages: [{ content_block: [{ content: { text_block: { text: CONTEXT_SENTINEL + '你好' } } }] }],
+    };
     const r = augmentCompletionRequest(body, opts);
     expect(r.changed).toBe(false);
   });
@@ -106,7 +110,9 @@ describe('augmentCompletionRequest（记忆注入）', () => {
     };
     const r = augmentCompletionRequest(body, opts);
     expect(body.messages[0].content_block[0].content.text_block.text).toBe('你好');
-    expect((r.body as any).messages[0].content_block[0].content.text_block.text).toBe('[M]你好');
+    expect((r.body as any).messages[0].content_block[0].content.text_block.text).toBe(
+      CONTEXT_SENTINEL + '[M]你好',
+    );
   });
 });
 
