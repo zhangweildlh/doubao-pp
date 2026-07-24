@@ -17,16 +17,22 @@ import {
 } from '../core/memory/store.ts';
 import { SkillStore, chromeSyncStorageBackend } from '../core/skills/store.ts';
 import { McpStore } from '../core/mcp/store.ts';
+import { ProjectStore } from '../core/project/store.ts';
+import { PresetStore } from '../core/preset/store.ts';
+import { SettingsStore } from '../core/settings/store.ts';
+import { broadcastRuntimeUpdate, type RuntimeBroadcastDependencies, type RuntimeBroadcastTab } from '../core/messaging/broadcast.ts';
 import {
   decodeRuntimeMessageEnvelope,
   createRuntimeMessageContext,
   authorizeRuntimeMessage,
   createRuntimeBoundaryErrorResponse,
+  DOUBAO_TAB_URL_PATTERN,
   type RuntimeMessageEnvelope,
 } from '../core/messaging/runtime-boundary.ts';
 import {
   createRuntimeCommandRegistry,
   getRuntimeCommandOwner,
+  CLIENT_ONLY_RUNTIME_COMMAND_TYPES,
   type RuntimeCommandRegistry,
 } from '../core/messaging/runtime-command-registry.ts';
 import { createDoubaoRuntimeHandlers } from './background/runtime-handler.ts';
@@ -41,14 +47,34 @@ const MAX_PENDING = 64;
 // 记忆存储（真机后端：chrome.storage.local）
 const memory = new MemoryStore(chromeStorageBackend);
 
-// 命令总线依赖：技能走云同步后端、MCP 走本地后端，均复用现有 Store。
+// 命令总线依赖：技能走云同步后端、其余走本地后端，均复用现有 Store。
+// P1 新增 project/preset/settings 同构 Store，覆盖 13 页面全部 CRUD 命令面。
 const skill = new SkillStore(chromeSyncStorageBackend);
 const mcp = new McpStore(chromeStorageBackend);
+const project = new ProjectStore(chromeStorageBackend);
+const preset = new PresetStore(chromeStorageBackend);
+const settings = new SettingsStore(chromeStorageBackend);
 
-// 运行时命令注册表（命令总线核心，P0 接入 GET_MEMORIES / GET_SKILLS / GET_MCP_SERVERS）。
+// 变更广播（P2）：mutation 命令处理后推送 *_UPDATED，供 sidePanel 响应式刷新。
+// 复用 Deepseek 同构的 broadcastRuntimeUpdate：扩展内 chrome.runtime.sendMessage
+// + 匹配豆包会话页的 content script 双通道投递，best-effort 容错（无接收端不报错）。
+const runtimeBroadcastDependencies: RuntimeBroadcastDependencies = {
+  tabUrlPattern: DOUBAO_TAB_URL_PATTERN,
+  sendRuntimeMessage: (payload) => chrome.runtime.sendMessage(payload) as Promise<unknown>,
+  queryTabsByUrl: (pattern) =>
+    chrome.tabs.query({ url: pattern }) as Promise<readonly RuntimeBroadcastTab[]>,
+  sendTabMessage: (tabId, payload) =>
+    chrome.tabs.sendMessage(tabId, payload) as Promise<unknown>,
+  reportError: (code, error) => console.error('[Doubao-pp][broadcast]', code, error),
+};
+function broadcast(type: string): void {
+  void broadcastRuntimeUpdate({ type }, undefined, runtimeBroadcastDependencies);
+}
+
+// 运行时命令注册表（命令总线核心，P0→P2 扩展为 24 个 typed-handler）。
 // 与现有桥接逻辑（GET_BRIDGE_HISTORY / GET_MEMORY 等）互不干扰，走独立通道。
 const runtimeCommandRegistry: RuntimeCommandRegistry = createRuntimeCommandRegistry({
-  typedHandlers: createDoubaoRuntimeHandlers({ memory, mcp, skill }),
+  typedHandlers: createDoubaoRuntimeHandlers({ memory, mcp, skill, project, preset, settings, broadcast }),
 });
 
 // 关联 CONVERSATION_READY 与 ASSISTANT_TEXT：二者共享 requestId
@@ -143,7 +169,14 @@ export default defineBackground(() => {
       } catch {
         return false; // 非运行时命令信封，交还现有桥接监听
       }
-      if (getRuntimeCommandOwner(envelope.type) === undefined) return false;
+      // 仅处理 typed-handler 命令；client-only 广播（*_UPDATED）与未知消息一律放行，
+      // 交还既有桥接监听，避免被误判为未知命令回 {ok:false}（P2 新增）。
+      if (
+        CLIENT_ONLY_RUNTIME_COMMAND_TYPES.includes(envelope.type) ||
+        getRuntimeCommandOwner(envelope.type) === undefined
+      ) {
+        return false;
+      }
 
       try {
         const context = createRuntimeMessageContext(sender, {
