@@ -159,83 +159,74 @@ function handleBridgeDetail(detail: Record<string, unknown>): void {
 }
 
 export default defineBackground(() => {
-  // —— 运行时命令总线（P0）：与下方桥接监听共存 ——
-  // 仅处理合法的运行时命令信封（GET_MEMORIES / GET_SKILLS / GET_MCP_SERVERS 等）；
-  // 非命令消息（桥接 / 现有 popup 请求）一律 return false，交给下方既有逻辑。
+  // 统一消息入口：运行时命令总线 + 桥接历史 + 记忆持久化 三通道合并为单个监听器。
+  // 单一 addListener 顺序处理，避免多监听器注册顺序影响（修复 background 集成测试取
+  // listeners[0] 的契约）：命令信封优先走命令总线 dispatch，其余消息按 popup 请求 /
+  // 桥接事件分流，与原双监听器运行时行为等价。
   chrome.runtime.onMessage.addListener(
     (
       msg: unknown,
       sender: chrome.runtime.MessageSender,
       sendResponse: (response?: unknown) => void,
     ) => {
-      let envelope: RuntimeMessageEnvelope;
+      // —— 运行时命令总线（P0）：尝试解析为合法命令信封 ——
       try {
-        envelope = decodeRuntimeMessageEnvelope(msg);
+        const envelope = decodeRuntimeMessageEnvelope(msg);
+        // 仅处理 typed-handler 命令；client-only 广播（*_UPDATED）与未知消息放行到下方逻辑
+        if (
+          !CLIENT_ONLY_RUNTIME_COMMAND_TYPES.includes(envelope.type) &&
+          getRuntimeCommandOwner(envelope.type) !== undefined
+        ) {
+          try {
+            const context = createRuntimeMessageContext(sender, {
+              runtimeId: chrome.runtime.id,
+              extensionOrigin: chrome.runtime.getURL('/'),
+              doubaoOrigin: new URL('https://www.doubao.com/').origin,
+            });
+            authorizeRuntimeMessage(envelope, context);
+            runtimeCommandRegistry
+              .dispatch(envelope, context)
+              .then(sendResponse)
+              .catch((error: unknown) =>
+                sendResponse(createRuntimeBoundaryErrorResponse(error, envelope)),
+              );
+          } catch (error) {
+            sendResponse(createRuntimeBoundaryErrorResponse(error, envelope));
+          }
+          return true;
+        }
       } catch {
-        return false; // 非运行时命令信封，交还现有桥接监听
-      }
-      // 仅处理 typed-handler 命令；client-only 广播（*_UPDATED）与未知消息一律放行，
-      // 交还既有桥接监听，避免被误判为未知命令回 {ok:false}（P2 新增）。
-      if (
-        CLIENT_ONLY_RUNTIME_COMMAND_TYPES.includes(envelope.type) ||
-        getRuntimeCommandOwner(envelope.type) === undefined
-      ) {
-        return false;
+        // 非运行时命令信封，走下方桥接 / popup 逻辑
       }
 
-      try {
-        const context = createRuntimeMessageContext(sender, {
-          runtimeId: chrome.runtime.id,
-          extensionOrigin: chrome.runtime.getURL('/'),
-          doubaoOrigin: new URL('https://www.doubao.com/').origin,
-        });
-        authorizeRuntimeMessage(envelope, context);
-        runtimeCommandRegistry
-          .dispatch(envelope, context)
-          .then(sendResponse)
-          .catch((error: unknown) =>
-            sendResponse(createRuntimeBoundaryErrorResponse(error, envelope)),
-          );
-      } catch (error) {
-        sendResponse(createRuntimeBoundaryErrorResponse(error, envelope));
-      }
-      return true;
-    },
-  );
-
-  chrome.runtime.onMessage.addListener(
-    (
-      msg: Record<string, unknown>,
-      _sender,
-      sendResponse: (response?: unknown) => void,
-    ) => {
       // —— popup 请求：桥接历史 ——
-      if (msg.type === 'GET_BRIDGE_HISTORY') {
+      const m = msg as Record<string, unknown>;
+      if (m.type === 'GET_BRIDGE_HISTORY') {
         sendResponse(bridgeMessages.slice());
         return true;
       }
-      if (msg.type === 'CLEAR_BRIDGE_HISTORY') {
+      if (m.type === 'CLEAR_BRIDGE_HISTORY') {
         bridgeMessages.length = 0;
         sendResponse({ ok: true });
         return true;
       }
 
       // —— popup 请求：记忆 ——
-      if (msg.type === 'GET_MEMORY') {
+      if (m.type === 'GET_MEMORY') {
         // 捕获异常并回空数组，避免消息通道因拒绝而挂起
         memory.getAll().then(sendResponse).catch(() => sendResponse([]));
         return true; // 保持消息通道以异步回包
       }
-      if (msg.type === 'CLEAR_MEMORY') {
+      if (m.type === 'CLEAR_MEMORY') {
         memory.clear().then(() => sendResponse({ ok: true })).catch(() => sendResponse({ ok: false }));
         return true;
       }
 
-      // 过滤非桥接消息（同时校验事件名，仅接受 BRIDGE_EVENT 类型）
-      if (msg.__doubaoPpBridge !== true || msg.type !== BRIDGE_EVENT) return;
-
-      const detail = (msg.detail ?? {}) as Record<string, unknown>;
-      handleBridgeDetail(detail);
+      // —— 桥接事件暂存（MAIN world content script 经 chrome.runtime.sendMessage 发来）——
+      if (m.__doubaoPpBridge === true && m.type === BRIDGE_EVENT) {
+        const detail = (m.detail ?? {}) as Record<string, unknown>;
+        handleBridgeDetail(detail);
+      }
     },
   );
 
