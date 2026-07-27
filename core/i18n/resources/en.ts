@@ -16,6 +16,7 @@ export const en: LocaleMessages = {
     saveChanges: 'Save changes',
     enable: 'Enable',
     deactivate: 'Deactivate',
+    saving: 'Saving…',
   },
   sidepanel: {
     memory: {
@@ -40,6 +41,14 @@ export const en: LocaleMessages = {
         contentPlaceholder: 'Memory content',
         tagsPlaceholder: 'Tags, comma separated',
       },
+      pageTitle: 'Memory',
+      newMemory: 'New memory',
+      filterAria: 'Filter memories by type',
+      filters: {
+        all: 'All',
+      },
+      emptyTitle: 'No memories yet',
+      emptyDescription: 'Click "New memory" to add your first user note.',
     },
     skill: {
       sources: {
@@ -67,6 +76,10 @@ export const en: LocaleMessages = {
         memoryInjectionLabel: 'Enable memory injection',
         triggerCommand: 'Trigger command',
       },
+      pageTitle: 'Skills',
+      newSkill: 'New skill',
+      emptyTitle: 'No skills yet',
+      emptyDescription: 'Click "New skill" to add your first injectable skill.',
     },
     preset: {
       activeBadge: 'Active',
@@ -75,6 +88,10 @@ export const en: LocaleMessages = {
         contentLabel: 'Context content',
         contentPlaceholder: 'Context block injected into the model',
       },
+      pageTitle: 'Presets',
+      newPreset: 'New preset',
+      emptyTitle: 'No presets yet',
+      emptyDescription: 'Click "New preset" to save your first parameter / context preset.',
     },
   },
 };

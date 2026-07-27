@@ -17,6 +17,7 @@ export const zhCN: LocaleMessages = {
     saveChanges: '保存修改',
     enable: '启用',
     deactivate: '停用',
+    saving: '保存中…',
   },
   sidepanel: {
     memory: {
@@ -41,6 +42,14 @@ export const zhCN: LocaleMessages = {
         contentPlaceholder: '记忆内容',
         tagsPlaceholder: '标签，用逗号分隔',
       },
+      pageTitle: '记忆管理',
+      newMemory: '新建记忆',
+      filterAria: '按类型筛选记忆',
+      filters: {
+        all: '全部',
+      },
+      emptyTitle: '还没有记忆',
+      emptyDescription: '点击「新建记忆」添加你的第一条用户笔记型记忆。',
     },
     skill: {
       sources: {
@@ -68,6 +77,10 @@ export const zhCN: LocaleMessages = {
         memoryInjectionLabel: '启用记忆注入',
         triggerCommand: '触发命令',
       },
+      pageTitle: '技能管理',
+      newSkill: '新建技能',
+      emptyTitle: '还没有技能',
+      emptyDescription: '点击「新建技能」添加你的第一个可注入模型的技能。',
     },
     preset: {
       activeBadge: '已激活',
@@ -76,6 +89,10 @@ export const zhCN: LocaleMessages = {
         contentLabel: '上下文内容',
         contentPlaceholder: '该预设要注入模型的上下文块',
       },
+      pageTitle: '预设管理',
+      newPreset: '新建预设',
+      emptyTitle: '还没有预设',
+      emptyDescription: '点击「新建预设」保存你的第一个参数组合 / 上下文预设。',
     },
   },
 };
