@@ -4,7 +4,7 @@
 //   - host_permissions 仅声明豆包网页版域名。路线 A 下扩展不在后台直连豆包 API，
 //     所有 /chat/completion 请求由页面自身发出并自带 a_bogus/msToken 签名；
 //     故 host_permissions 仅为后续「后台直连」预留，当前保持最小化。
-//   - 移除 pyodide / skill 资源复制钩子（P0 阶段不移植 Python 沙箱与技能包）。
+//   - P5 恢复 pyodide 资产复制钩子（遵循 §8 parity 铁律；Doubao 技能暂不用 Python，但保留同构资产）。
 //   - 保留 asciiJavaScriptOutputPlugin（确保中文文案在打包后不被破坏）。
 //   - 新增 @wxt-dev/module-react 模块、Tailwind v4 插件，以及 side_panel /
 //     web_accessible_resources 资源声明，为 sidePanel 骨架（P0）提供同构结构。
@@ -14,10 +14,12 @@ import tailwindcss from '@tailwindcss/vite';
 import type { Plugin } from 'vite';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
-import { readFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, readFileSync } from 'node:fs';
+import pyodidePackagePolicy from './scripts/pyodide-package-policy.json';
 
 const rootDir = dirname(fileURLToPath(import.meta.url));
 const extensionVersion = readPackageVersion();
+const PYODIDE_ASSET_FILES = pyodidePackagePolicy.assets.map(({ file }) => file);
 const CHROMIUM_BROWSERS = new Set(['chrome', 'edge']);
 
 const MANIFEST_NAME = 'Doubao-pp';
@@ -90,6 +92,22 @@ export function createManifest(env: ConfigEnv): UserManifest {
   };
 }
 
+// P5：从 node_modules/pyodide 复制 Python WASM 运行时资产到 dist/pyodide（§8 parity 铁律）。
+function copyPyodideAssets(
+  outputDir: string,
+  publicAssets: Array<{ type: 'asset'; fileName: string }>,
+): void {
+  const sourceDir = resolve(rootDir, 'node_modules/pyodide');
+  const targetDir = resolve(outputDir, 'pyodide');
+  mkdirSync(targetDir, { recursive: true });
+
+  for (const file of PYODIDE_ASSET_FILES) {
+    const fileName = `pyodide/${file}`;
+    copyFileSync(resolve(sourceDir, file), resolve(outputDir, fileName));
+    publicAssets.push({ type: 'asset', fileName });
+  }
+}
+
 // 非 ASCII 转义插件：确保中文文案在打包后不被破坏（沿用 Deepseek-pp 验证过的方案）。
 function asciiJavaScriptOutputPlugin(): Plugin {
   return {
@@ -139,8 +157,9 @@ export default defineConfig({
   hooks: {
     // P0：预留构建后钩子；不拷贝 pyodide 资源（路线 B 默认禁用）。
     // 后续阶段可在此接入技能包 / 资源复制。
-    'build:done'() {
-      // intentionally empty in P0
+    'build:done'(wxt, output) {
+      // P5：恢复 pyodide 资产复制（§8 parity 铁律），与上游同构。
+      copyPyodideAssets(wxt.config.outDir, output.publicAssets);
     },
   },
   vite: () => ({
