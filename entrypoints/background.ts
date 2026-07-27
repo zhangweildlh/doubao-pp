@@ -37,6 +37,7 @@ import {
   type RuntimeCommandRegistry,
 } from '../core/messaging/runtime-command-registry.ts';
 import { createDoubaoRuntimeHandlers } from './background/runtime-handler.ts';
+import { probeShellHost } from '../core/shell-host/register.ts';
 
 // 模块级消息缓存，最多保留最近 20 条（调试用桥接历史）
 const bridgeMessages: Array<{ type: string; detail: unknown; receivedAt: number }> = [];
@@ -229,6 +230,20 @@ export default defineBackground(() => {
       }
     },
   );
+
+  // P5：best-effort 探测 shell-host 复用状态（§8 铁律④），失败仅告警不阻塞启动
+  void probeShellHost()
+    .then((res) => {
+      if (res.reachable) {
+        console.info('[Doubao-pp][shell-host] 已连接 DeepSeek++ shell-host。');
+      } else {
+        console.info(
+          '[Doubao-pp][shell-host] 未检测到可用的 shell-host；如需本地 shell 能力，' +
+            '运行 scripts/shell-host-register.mjs 追加本扩展到其 allowed_origins。',
+        );
+      }
+    })
+    .catch(() => {});
 
   console.info('[Doubao-pp] background service worker 已启动');
 });
