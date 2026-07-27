@@ -55,3 +55,42 @@ export type NewMemory = Omit<Memory, 'id' | 'createdAt' | 'updatedAt'> & {
   syncId?: string;
   scope?: MemoryScope;
 };
+
+/**
+ * 技能（记忆管理 UI 与技能页消费）。
+ * 与 core/skills/store.ts 的 SkillEntry 字段对齐（id/name/description/content/enabled/builtin/createdAt/updatedAt）；
+ * 豆包化：用 `content` 承载注入文本（上游用 `instructions`），无 `source`/`remote`/`memoryEnabled` 字段。
+ */
+export interface Skill {
+  id: string;
+  name: string;
+  description: string;
+  content: string;
+  enabled: boolean;
+  builtin: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 新建 / 编辑技能入参（省略系统字段） */
+export type SkillInput = Omit<Skill, 'id' | 'createdAt' | 'updatedAt'> & {
+  id?: string;
+};
+
+/**
+ * 预设（记忆管理 UI 与预设页消费）。
+ * 与 core/preset/store.ts 的 PresetEntry 字段对齐：用 `context` 承载注入文本（上游用 `content`）；
+ * id 由 PresetStore 自带 genId 生成，故入参无需 id/时间戳（用 PresetInput）。
+ */
+export interface SystemPromptPreset {
+  id: string;
+  name: string;
+  description: string;
+  context: string;
+  params: Record<string, unknown>;
+  createdAt: number;
+  updatedAt: number;
+}
+
+/** 新建 / 编辑预设入参（省略系统字段，id 由 Store 生成） */
+export type PresetInput = Omit<SystemPromptPreset, 'id' | 'createdAt' | 'updatedAt'>;
