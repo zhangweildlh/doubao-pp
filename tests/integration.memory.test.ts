@@ -169,6 +169,33 @@ describe('background 记忆持久化（集成）', () => {
     expect(entries.some((e) => e.conversationId === 'cX' && e.assistantText === 'X')).toBe(true);
   });
 
+  it('M3：ASSISTANT_TEXT 自带 conversationId 时不依赖 CONVERSATION_READY（SW 重启安全）', async () => {
+    // 不发送 CONVERSATION_READY，直接下发自带元信息的 ASSISTANT_TEXT，
+    // 验证 background 优先使用载荷自带元信息（pendingConv 为空时应仍正确关联，而非回退 anon-）
+    registerListener(
+      {
+        __doubaoPpBridge: true,
+        type: BRIDGE_EVENT,
+        detail: {
+          type: 'ASSISTANT_TEXT',
+          requestId: 'rM3',
+          text: '自包含元信息定稿',
+          conversationId: 'cM3',
+          sectionId: 'sM3',
+          sessionUrl: 'urlM3',
+        },
+      },
+      {},
+      () => {},
+    );
+    await flush();
+    const sr = vi.fn();
+    registerListener({ type: 'GET_MEMORY' }, {}, sr);
+    await flush();
+    const entries = sr.mock.calls[0][0] as Array<{ conversationId: string; assistantText: string }>;
+    expect(entries.some((e) => e.conversationId === 'cM3' && e.assistantText === '自包含元信息定稿')).toBe(true);
+  });
+
   it('GET_MEMORY 在存储异常时回空数组而非挂起', async () => {
     // 让 storage.get 抛错，验证 .catch 兜底回包 []
     (globalThis as any).chrome.storage.local.get = async () => {

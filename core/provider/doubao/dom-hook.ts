@@ -69,7 +69,16 @@ export type BridgeDetail =
       sessionUrl: string | null;
     }
   | { type: 'STREAMING_TEXT'; requestId: string; text: string }
-  | { type: 'ASSISTANT_TEXT'; requestId: string; text: string }
+  | {
+      type: 'ASSISTANT_TEXT';
+      requestId: string;
+      text: string;
+      // M3：ASSISTANT_TEXT 自带会话元信息，使 background 在 SW 休眠/重启后
+      // 仍能可靠关联（不再仅依赖内存 pendingConv）；字段可选以保持向后兼容。
+      conversationId?: string | null;
+      sectionId?: string | null;
+      sessionUrl?: string | null;
+    }
   | { type: 'ERROR'; message: string };
 
 // 注：完整桥接接受 unknown（dom-observer 还会下发 DOM_READY / PAGE_MESSAGE /

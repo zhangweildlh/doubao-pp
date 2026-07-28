@@ -146,21 +146,28 @@ function handleBridgeDetail(detail: Record<string, unknown>): void {
   if (evtType === 'ASSISTANT_TEXT') {
     const reqId = detail.requestId as string | undefined;
     const text = typeof detail.text === 'string' ? detail.text : '';
+    // M3：优先使用载荷自带元信息（SW 休眠/重启后 pendingConv 内存已清空仍可正确关联）；
+    // 其次回退内存 pendingConv（CONVERSATION_READY 与 ASSISTANT_TEXT 同 reqId 配对）；
+    // 最后兜底 lastConversationId（异常场景，正常流程不触发）。
+    const payloadConversationId = (detail.conversationId as string | null | undefined) ?? null;
+    const payloadSectionId = (detail.sectionId as string | null | undefined) ?? null;
+    const payloadSessionUrl = (detail.sessionUrl as string | null | undefined) ?? null;
     const meta = (reqId && pendingConv.get(reqId)) || null;
-    // 关联优先用 pendingConv（CONVERSATION_READY 与 ASSISTANT_TEXT 同 reqId 配对，稳定去重）；
-    // lastConversationId 仅作异常兜底（reqId 不匹配时）。正常流程不触发兜底，
-    // 并发对话流理论上有串号风险，但 fetch-hook 保证 READY/定稿文本同 reqId 配对，实际不触发。
-    const conversationId = meta?.conversationId ?? lastConversationId;
+    const conversationId =
+      payloadConversationId ?? meta?.conversationId ?? lastConversationId;
+    const sectionId = payloadSectionId ?? meta?.sectionId ?? null;
+    const sessionUrl = payloadSessionUrl ?? meta?.sessionUrl ?? null;
     const entry: MemoryEntry = {
       id: conversationId ?? reqId ?? `anon-${Date.now()}`,
       conversationId,
-      sectionId: meta?.sectionId ?? null,
-      sessionUrl: meta?.sessionUrl ?? null,
+      sectionId,
+      sessionUrl,
       assistantText: text,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
-    // 记忆写入为异步且不需要回包；捕获异常避免未处理的 promise 拒绝
+    // 记忆写入为异步且不需要回包；捕获异常避免未处理的 promise 拒绝。
+    // M5：MemoryStore.append 内部已串行化写入，避免并发丢失更新。
     memory.append(entry).catch((err) => {
       console.error('[Doubao-pp] 记忆写入失败', err);
     });

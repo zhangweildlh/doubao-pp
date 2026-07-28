@@ -24,9 +24,9 @@ import {
 export default defineContentScript({
   matches: ['*://www.doubao.com/chat/*'],
   world: 'ISOLATED',
-  main() {
+  main(ctx) {
     // MAIN world 经 window.postMessage 投递的桥接载荷，标记 __doubaoPpRelay
-    window.addEventListener('message', (e: MessageEvent) => {
+    const onRelayMessage = (e: MessageEvent) => {
       const data = e.data as Record<string, unknown> | null;
       if (!data || data.__doubaoPpRelay !== true) return;
       try {
@@ -39,11 +39,11 @@ export default defineContentScript({
       } catch {
         // 扩展上下文异常时静默忽略
       }
-    });
+    };
 
     // 第 6 步：MAIN world（360Chrome 可能无 chrome.storage）经跨世界请求回读注入上下文。
     // ISOLATED relay 具完整 chrome.storage，读后原路 postMessage 回传 MAIN world。
-    window.addEventListener('message', (e: MessageEvent) => {
+    const onCtxRequest = (e: MessageEvent) => {
       const data = e.data as Record<string, unknown> | null;
       if (!data || data[CTX_REQ_CHANNEL] !== true) return;
       const reqId = typeof data.reqId === 'string' ? data.reqId : '';
@@ -56,8 +56,17 @@ export default defineContentScript({
           // fail-open：读取出错也回传空上下文，保证 MAIN world 不悬挂
           window.postMessage({ [CTX_RESP_CHANNEL]: true, reqId, context: '' }, '*');
         });
-    });
+    };
+
+    window.addEventListener('message', onRelayMessage);
+    window.addEventListener('message', onCtxRequest);
 
     console.info('[Doubao-pp] 隔离世界中继已就绪（MAIN→background 桥接 / 上下文回读）');
+
+    // 扩展上下文失效（扩展重载 / 页面卸载）时对称移除监听，避免悬挂引用与重复转发
+    ctx.onInvalidated(() => {
+      window.removeEventListener('message', onRelayMessage);
+      window.removeEventListener('message', onCtxRequest);
+    });
   },
 });

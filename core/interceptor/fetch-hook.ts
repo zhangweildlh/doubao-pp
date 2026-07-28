@@ -148,7 +148,16 @@ async function consumeStream(
   // 定稿文本：权威 brief（缺失时回退流式拼接），用于记忆/上下文存储
   const finalText = collectAssistantText(events);
   if (finalText.length > 0) {
-    bridgeEmit({ type: 'ASSISTANT_TEXT', text: finalText, requestId: ctx.requestId });
+    // M3：自带会话元信息，确保 background 在 SW 休眠/重启后仍能正确关联记忆，
+    // 不依赖内存态 pendingConv（meta 在 CONVERSATION_READY 分支已计算，此处直接复用）。
+    bridgeEmit({
+      type: 'ASSISTANT_TEXT',
+      text: finalText,
+      requestId: ctx.requestId,
+      conversationId: meta.conversationId,
+      sectionId: meta.sectionId,
+      sessionUrl: meta.sessionUrl,
+    });
     callbacks.onAssistantText?.(finalText, ctx);
   }
 }

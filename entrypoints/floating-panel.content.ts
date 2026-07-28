@@ -31,6 +31,19 @@ function esc(s: string): string {
   );
 }
 
+// 仅放行 http:/https: 方案，阻断 javascript:/data:/vbscript: 等危险方案，
+// 防止伪造的 sessionUrl 经浮窗链接点击触发脚本注入（DOM XSS / 钓鱼）。
+function safeUrl(s: string | null | undefined): string | null {
+  if (!s) return null;
+  try {
+    const u = new URL(s);
+    if (u.protocol === 'http:' || u.protocol === 'https:') return u.href;
+  } catch {
+    /* 非法 URL，直接丢弃 */
+  }
+  return null;
+}
+
 const PANEL_CSS = `
   :host { all: initial; }
   .dp-fab {
@@ -130,9 +143,10 @@ export default defineContentScript({
       const cid = state.conversationId ?? '（未知）';
       const src = state.finalText || state.streamingText;
       const label = state.finalText ? '定稿文本' : '流式回显';
+      const safeSessionUrl = safeUrl(state.sessionUrl);
       liveEl.innerHTML = `
         <div class="dp-row"><span class="dp-muted">会话:</span> ${esc(cid)}</div>
-        ${state.sessionUrl ? `<div class="dp-row"><a class="dp-link" href="${esc(state.sessionUrl)}" target="_blank" rel="noreferrer">打开会话</a></div>` : ''}
+        ${safeSessionUrl ? `<div class="dp-row"><a class="dp-link" href="${esc(safeSessionUrl)}" target="_blank" rel="noreferrer">打开会话</a></div>` : ''}
         <div class="dp-row">
           <span class="dp-muted">${esc(label)}:</span>
           <div class="dp-stream">${esc(src || '（暂无）')}</div>

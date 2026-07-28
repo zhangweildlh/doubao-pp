@@ -21,6 +21,7 @@ import {
   BRIDGE_EVENT,
 } from '../core/provider/doubao/dom-hook.ts';
 import { readPageAuth } from '../core/provider/doubao/auth.ts';
+import { MemoryStore, createMemoryBackend, type MemoryEntry } from '../core/memory/store.ts';
 
 describe('applyPatchOp', () => {
   it('append 追加到末尾', () => {
@@ -62,6 +63,19 @@ describe('extractBrief / collectAssistantText', () => {
   it('collectAssistantText 无 brief 时回退流式拼接', () => {
     const noBrief = [{ id: null, event: 'CHUNK_DELTA', data: { text: '流' } }] as any;
     expect(collectAssistantText(noBrief)).toBe('流');
+  });
+  it('extractBrief 仅取 end_type:1 的 brief（忽略 end_type:2/3 的伪 brief）', () => {
+    const mixed = [
+      { id: null, event: 'SSE_REPLY_END', data: { end_type: 2, msg_finish_attr: { brief: '伪定稿' } } },
+      { id: null, event: 'SSE_REPLY_END', data: { end_type: 1, msg_finish_attr: { brief: '真实定稿' } } },
+    ] as any;
+    expect(extractBrief(mixed)).toBe('真实定稿');
+  });
+  it('extractBrief 仅 end_type:2 含 brief 时返回 null（M2 回归）', () => {
+    const only2 = [
+      { id: null, event: 'SSE_REPLY_END', data: { end_type: 2, msg_finish_attr: { brief: '伪定稿' } } },
+    ] as any;
+    expect(extractBrief(only2)).toBeNull();
   });
 });
 
@@ -180,5 +194,44 @@ describe('readPageAuth（P2 未接线函数守护）', () => {
     expect(s.hasSessionCookie).toBe(false);
     expect(s.hasMsToken).toBe(false);
     expect(s.webId).toBeNull();
+  });
+});
+
+describe('MemoryStore.append 并发写入（M5 回归）', () => {
+  const mkEntry = (id: string, text: string): MemoryEntry => ({
+    id,
+    conversationId: id,
+    sectionId: null,
+    sessionUrl: null,
+    assistantText: text,
+    createdAt: 1,
+    updatedAt: 1,
+  });
+
+  it('并发 append 不同 id 不丢失任何条目', async () => {
+    const store = new MemoryStore(createMemoryBackend());
+    const ids = Array.from({ length: 20 }, (_, i) => `c${i}`);
+    // 同时发起 20 个无 await 的 append（模拟高频流式并发到达）
+    await Promise.all(ids.map((id) => store.append(mkEntry(id, `t-${id}`))));
+    const all = await store.getAll();
+    expect(all.length).toBe(20);
+    // 每个 id 均存在且文本正确（无被覆盖丢失）
+    for (const id of ids) {
+      const found = all.find((e) => e.id === id);
+      expect(found).toBeDefined();
+      expect(found?.assistantText).toBe(`t-${id}`);
+    }
+  });
+
+  it('并发 append 同 id 最终文本为最后一次写入', async () => {
+    const store = new MemoryStore(createMemoryBackend());
+    await Promise.all([
+      store.append(mkEntry('same', 'v1')),
+      store.append(mkEntry('same', 'v2')),
+      store.append(mkEntry('same', 'v3')),
+    ]);
+    const all = await store.getAll();
+    expect(all.length).toBe(1);
+    expect(all[0].assistantText).toBe('v3');
   });
 });

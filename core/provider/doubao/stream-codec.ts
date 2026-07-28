@@ -147,8 +147,12 @@ export function extractBrief(events: StreamEvent[]): string | null {
   let brief: string | null = null;
   for (const e of events) {
     if (e.event === 'SSE_REPLY_END' && e.data && typeof e.data === 'object') {
-      const b = (e.data as { msg_finish_attr?: { brief?: string } }).msg_finish_attr?.brief;
-      if (typeof b === 'string') brief = b; // 取最后一个含 brief 的（通常唯一 end_type:1）
+      const d = e.data as { end_type?: number; msg_finish_attr?: { brief?: string } };
+      // 仅 end_type:1 的 brief 为服务端定稿、可靠；end_type 与 msg_finish_attr 同处 data 顶层，
+      // end_type:2/3 为 suggest/finish 标记，即便携带 brief 也不可信，必须过滤（与文档契约一致）。
+      if (d.end_type === 1 && typeof d.msg_finish_attr?.brief === 'string') {
+        brief = d.msg_finish_attr.brief;
+      }
     }
   }
   return brief;

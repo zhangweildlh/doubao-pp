@@ -62,6 +62,19 @@ export function createMemoryBackend(
 export class MemoryStore {
   constructor(private readonly backend: StorageBackend) {}
 
+  // M5：串行化所有写操作（append/update/remove 均为 read-modify-write），
+  // 避免并发到达的桥接消息交错导致后写覆盖先写、记忆条目丢失更新。
+  private writeChain: Promise<unknown> = Promise.resolve();
+  private enqueueWrite<T>(op: () => Promise<T>): Promise<T> {
+    // 无论前一次成功或失败，本次写都排队执行；链自身不随错误而断裂
+    const run = this.writeChain.then(op, op);
+    this.writeChain = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
+  }
+
   /** 返回全量记忆条目（非数组时回退空数组，避免脏数据导致崩溃） */
   async getAll(): Promise<MemoryEntry[]> {
     const raw = await this.backend.get(STORAGE_KEY);
@@ -77,26 +90,28 @@ export class MemoryStore {
    * 返回写入后的全量列表（已截断）
    */
   async append(entry: MemoryEntry): Promise<MemoryEntry[]> {
-    const list = await this.getAll();
-    const now = Date.now();
-    const idx = list.findIndex((e) => e.id === entry.id);
-    if (idx >= 0) {
-      const prev = list[idx];
-      list[idx] = {
-        ...prev,
-        assistantText: entry.assistantText,
-        // 优先采用新值；新值为空时保留既有已知值
-        conversationId: entry.conversationId ?? prev.conversationId,
-        sectionId: entry.sectionId ?? prev.sectionId,
-        sessionUrl: entry.sessionUrl ?? prev.sessionUrl,
-        updatedAt: now,
-      };
-    } else {
-      list.push({ ...entry, createdAt: entry.createdAt ?? now, updatedAt: now });
-    }
-    const trimmed = list.slice(-MAX_ENTRIES);
-    await this.backend.set(STORAGE_KEY, trimmed);
-    return trimmed;
+    return this.enqueueWrite(async () => {
+      const list = await this.getAll();
+      const now = Date.now();
+      const idx = list.findIndex((e) => e.id === entry.id);
+      if (idx >= 0) {
+        const prev = list[idx];
+        list[idx] = {
+          ...prev,
+          assistantText: entry.assistantText,
+          // 优先采用新值；新值为空时保留既有已知值
+          conversationId: entry.conversationId ?? prev.conversationId,
+          sectionId: entry.sectionId ?? prev.sectionId,
+          sessionUrl: entry.sessionUrl ?? prev.sessionUrl,
+          updatedAt: now,
+        };
+      } else {
+        list.push({ ...entry, createdAt: entry.createdAt ?? now, updatedAt: now });
+      }
+      const trimmed = list.slice(-MAX_ENTRIES);
+      await this.backend.set(STORAGE_KEY, trimmed);
+      return trimmed;
+    });
   }
 
   /** 按 id 精确读取单条；不存在返回 undefined */
@@ -112,28 +127,32 @@ export class MemoryStore {
    * 返回更新后的全量列表
    */
   async update(id: string, patch: Partial<Omit<MemoryEntry, 'id' | 'createdAt'>>): Promise<MemoryEntry[]> {
-    const list = await this.getAll();
-    const idx = list.findIndex((e) => e.id === id);
-    if (idx < 0) return list;
-    const now = Date.now();
-    list[idx] = {
-      ...list[idx],
-      ...patch,
-      id: list[idx].id, // id 锁定
-      createdAt: list[idx].createdAt, // createdAt 锁定
-      updatedAt: now,
-    };
-    await this.backend.set(STORAGE_KEY, list);
-    return list;
+    return this.enqueueWrite(async () => {
+      const list = await this.getAll();
+      const idx = list.findIndex((e) => e.id === id);
+      if (idx < 0) return list;
+      const now = Date.now();
+      list[idx] = {
+        ...list[idx],
+        ...patch,
+        id: list[idx].id, // id 锁定
+        createdAt: list[idx].createdAt, // createdAt 锁定
+        updatedAt: now,
+      };
+      await this.backend.set(STORAGE_KEY, list);
+      return list;
+    });
   }
 
   /** 按 id 删除一条记忆；不存在则 no-op，返回原列表 */
   async remove(id: string): Promise<MemoryEntry[]> {
-    const list = await this.getAll();
-    const filtered = list.filter((e) => e.id !== id);
-    if (filtered.length === list.length) return list; // 无变化
-    await this.backend.set(STORAGE_KEY, filtered);
-    return filtered;
+    return this.enqueueWrite(async () => {
+      const list = await this.getAll();
+      const filtered = list.filter((e) => e.id !== id);
+      if (filtered.length === list.length) return list; // 无变化
+      await this.backend.set(STORAGE_KEY, filtered);
+      return filtered;
+    });
   }
 
   /** 清空全部记忆 */
