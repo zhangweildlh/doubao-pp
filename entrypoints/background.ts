@@ -21,6 +21,9 @@ import { McpStore } from '../core/mcp/store.ts';
 import { ProjectStore } from '../core/project/store.ts';
 import { PresetStore } from '../core/preset/store.ts';
 import { SettingsStore } from '../core/settings/store.ts';
+import { SavedStore } from '../core/saved/store.ts';
+import { AutomationStore } from '../core/automation/store.ts';
+import { BrowserControlStore } from '../core/browser-control/store.ts';
 import { broadcastRuntimeUpdate, type RuntimeBroadcastDependencies, type RuntimeBroadcastTab } from '../core/messaging/broadcast.ts';
 import {
   decodeRuntimeMessageEnvelope,
@@ -60,6 +63,9 @@ const mcp = new McpStore(chromeStorageBackend);
 const project = new ProjectStore(chromeStorageBackend);
 const preset = new PresetStore(chromeStorageBackend);
 const settings = new SettingsStore(chromeStorageBackend);
+const saved = new SavedStore(chromeStorageBackend);
+const automation = new AutomationStore(chromeStorageBackend);
+const browserControl = new BrowserControlStore(chromeStorageBackend);
 
 // 变更广播（P2）：mutation 命令处理后推送 *_UPDATED，供 sidePanel 响应式刷新。
 // 复用 Deepseek 同构的 broadcastRuntimeUpdate：扩展内 chrome.runtime.sendMessage
@@ -80,7 +86,19 @@ function broadcast(type: string): void {
 // 运行时命令注册表（命令总线核心，P0→P2 扩展为 24 个 typed-handler）。
 // 与现有桥接逻辑（GET_BRIDGE_HISTORY / GET_MEMORY 等）互不干扰，走独立通道。
 const runtimeCommandRegistry: RuntimeCommandRegistry = createRuntimeCommandRegistry({
-  typedHandlers: createDoubaoRuntimeHandlers({ userMemory, mcp, skill, project, preset, settings, broadcast }),
+  typedHandlers: createDoubaoRuntimeHandlers({
+    memory,
+    userMemory,
+    mcp,
+    skill,
+    project,
+    preset,
+    settings,
+    saved,
+    automation,
+    browserControl,
+    broadcast,
+  }),
 });
 
 // 关联 CONVERSATION_READY 与 ASSISTANT_TEXT：二者共享 requestId

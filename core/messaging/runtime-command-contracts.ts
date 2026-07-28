@@ -12,11 +12,14 @@
 //   - client-only：仅由 background 向 sidePanel 广播（如 *_UPDATED），不进注册表。
 
 import type { Memory, NewMemory } from '../types.ts';
+import type { MemoryEntry } from '../memory/store.ts';
 import type { SkillEntry } from '../skills/store.ts';
 import type { McpToolEntry } from '../mcp/store.ts';
 import type { ProjectInput, ProjectEntry } from '../project/store.ts';
 import type { PresetInput, PresetEntry } from '../preset/store.ts';
 import type { PluginSettings } from '../settings/store.ts';
+import type { SavedSnippet, SavedSnippetInput } from '../saved/store.ts';
+import type { AutomationRule, AutomationRuleInput } from '../automation/store.ts';
 
 export type RuntimeRequestBoundary =
   | 'none'
@@ -104,6 +107,24 @@ export const RUNTIME_COMMAND_CONTRACTS = {
   UPDATE_CONFIG: typedCommand('payload-cast', 'value'),
   RESET_CONFIG: typedCommand('none', 'value'),
 
+  // —— 会话历史（P6：复用对话记忆 store，GET/CLEAR 不进 popup 分支，改走命令总线） ——
+  GET_CONVERSATION_HISTORY: typedCommand('none', 'value'),
+  CLEAR_CONVERSATION_HISTORY: typedCommand('none', 'ack'),
+
+  // —— 收藏片段（P6） ——
+  GET_SAVED: typedCommand('none', 'value'),
+  SAVE_SAVED: typedCommand('payload-cast', 'ack'),
+  DELETE_SAVED: typedCommand('payload-cast', 'ack'),
+
+  // —— 自动化规则（P6） ——
+  GET_AUTOMATIONS: typedCommand('none', 'value'),
+  CREATE_AUTOMATION: typedCommand('payload-cast', 'ack'),
+  DELETE_AUTOMATION: typedCommand('payload-cast', 'ack'),
+
+  // —— 浏览器控制（P6，默认关闭） ——
+  GET_BROWSER_CONTROL: typedCommand('none', 'value'),
+  SET_BROWSER_CONTROL: typedCommand('payload-cast', 'ack'),
+
   // —— client-only 广播命令（background → sidePanel，不进注册表） ——
   MEMORIES_UPDATED: command('client-only', 'none', 'unrouted', 'none', 'declared-only', 'none'),
   SKILLS_UPDATED: command('client-only', 'none', 'unrouted', 'none', 'declared-only', 'none'),
@@ -111,6 +132,10 @@ export const RUNTIME_COMMAND_CONTRACTS = {
   PROJECT_CONTEXT_UPDATED: command('client-only', 'none', 'unrouted', 'none', 'declared-only', 'none'),
   PRESETS_UPDATED: command('client-only', 'none', 'unrouted', 'none', 'declared-only', 'none'),
   SETTINGS_UPDATED: command('client-only', 'none', 'unrouted', 'none', 'declared-only', 'none'),
+  CONVERSATION_HISTORY_UPDATED: command('client-only', 'none', 'unrouted', 'none', 'declared-only', 'none'),
+  SAVED_UPDATED: command('client-only', 'none', 'unrouted', 'none', 'declared-only', 'none'),
+  AUTOMATIONS_UPDATED: command('client-only', 'none', 'unrouted', 'none', 'declared-only', 'none'),
+  BROWSER_CONTROL_UPDATED: command('client-only', 'none', 'unrouted', 'none', 'declared-only', 'none'),
 } as const satisfies Record<string, RuntimeCommandContract>;
 
 export const TYPED_RUNTIME_COMMAND_TYPES = commandTypesOwnedBy('typed-handler');
@@ -150,6 +175,13 @@ export type SetActivePresetCommand = { id: string };
 /** 命令载荷类型：配置局部更新。 */
 export type UpdateConfigCommand = Partial<PluginSettings>;
 
+/** 命令载荷类型：收藏片段 upsert（id 存在则更新，否则创建）。 */
+export type SaveSavedCommand = SavedSnippetInput;
+/** 命令载荷类型：自动化规则创建（无需关心 id / 时间戳）。 */
+export type CreateAutomationCommand = AutomationRuleInput;
+/** 命令载荷类型：浏览器控制开关设置。 */
+export type SetBrowserControlCommand = { enabled: boolean };
+
 /**
  * 命令的「请求/响应」形状映射。registry 与 sidePanel 客户端据此推导类型。
  * 扩展命令时，在此补充对应条目即可保持与 Deepseek-pp 同构。
@@ -185,10 +217,25 @@ export interface RuntimeCommandContracts {
   UPDATE_CONFIG: { request: { type: 'UPDATE_CONFIG'; payload: UpdateConfigCommand }; response: PluginSettings };
   RESET_CONFIG: { request: { type: 'RESET_CONFIG' }; response: PluginSettings };
 
+  GET_CONVERSATION_HISTORY: { request: { type: 'GET_CONVERSATION_HISTORY' }; response: MemoryEntry[] };
+  CLEAR_CONVERSATION_HISTORY: { request: { type: 'CLEAR_CONVERSATION_HISTORY' }; response: { ok: true } };
+  GET_SAVED: { request: { type: 'GET_SAVED' }; response: SavedSnippet[] };
+  SAVE_SAVED: { request: { type: 'SAVE_SAVED'; payload: SaveSavedCommand }; response: { ok: true } };
+  DELETE_SAVED: { request: { type: 'DELETE_SAVED'; payload: DeleteByIdCommand }; response: { ok: true } };
+  GET_AUTOMATIONS: { request: { type: 'GET_AUTOMATIONS' }; response: AutomationRule[] };
+  CREATE_AUTOMATION: { request: { type: 'CREATE_AUTOMATION'; payload: CreateAutomationCommand }; response: { ok: true } };
+  DELETE_AUTOMATION: { request: { type: 'DELETE_AUTOMATION'; payload: DeleteByIdCommand }; response: { ok: true } };
+  GET_BROWSER_CONTROL: { request: { type: 'GET_BROWSER_CONTROL' }; response: { enabled: boolean } };
+  SET_BROWSER_CONTROL: { request: { type: 'SET_BROWSER_CONTROL'; payload: SetBrowserControlCommand }; response: { ok: true } };
+
   MEMORIES_UPDATED: { request: { type: 'MEMORIES_UPDATED' }; response: { ok: true } };
   SKILLS_UPDATED: { request: { type: 'SKILLS_UPDATED' }; response: { ok: true } };
   MCP_SERVERS_UPDATED: { request: { type: 'MCP_SERVERS_UPDATED' }; response: { ok: true } };
   PROJECT_CONTEXT_UPDATED: { request: { type: 'PROJECT_CONTEXT_UPDATED' }; response: { ok: true } };
   PRESETS_UPDATED: { request: { type: 'PRESETS_UPDATED' }; response: { ok: true } };
   SETTINGS_UPDATED: { request: { type: 'SETTINGS_UPDATED' }; response: { ok: true } };
+  CONVERSATION_HISTORY_UPDATED: { request: { type: 'CONVERSATION_HISTORY_UPDATED' }; response: { ok: true } };
+  SAVED_UPDATED: { request: { type: 'SAVED_UPDATED' }; response: { ok: true } };
+  AUTOMATIONS_UPDATED: { request: { type: 'AUTOMATIONS_UPDATED' }; response: { ok: true } };
+  BROWSER_CONTROL_UPDATED: { request: { type: 'BROWSER_CONTROL_UPDATED' }; response: { ok: true } };
 }

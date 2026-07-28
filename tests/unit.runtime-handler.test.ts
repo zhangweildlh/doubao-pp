@@ -12,6 +12,7 @@
 import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 import {
   createMemoryBackend,
+  MemoryStore,
   type StorageBackend,
 } from '../core/memory/store.ts';
 import { UserMemoryStore } from '../core/memory/user-memory.ts';
@@ -20,6 +21,9 @@ import { McpStore } from '../core/mcp/store.ts';
 import { ProjectStore } from '../core/project/store.ts';
 import { PresetStore } from '../core/preset/store.ts';
 import { SettingsStore } from '../core/settings/store.ts';
+import { SavedStore } from '../core/saved/store.ts';
+import { AutomationStore } from '../core/automation/store.ts';
+import { BrowserControlStore } from '../core/browser-control/store.ts';
 import { createDoubaoRuntimeHandlers } from '../entrypoints/background/runtime-handler.ts';
 import { createRuntimeCommandRegistry } from '../core/messaging/runtime-command-registry.ts';
 import type { RuntimeMessageContext } from '../core/messaging/runtime-boundary.ts';
@@ -36,12 +40,16 @@ function makeDeps(broadcast: (type: string) => void) {
   // 共享同一内存后端（各 Store 用不同 KEY，互不冲突），便于跨命令往返验证。
   const backend: StorageBackend = createMemoryBackend();
   return {
+    memory: new MemoryStore(backend),
     userMemory: new UserMemoryStore(backend),
     skill: new SkillStore(backend),
     mcp: new McpStore(backend),
     project: new ProjectStore(backend),
     preset: new PresetStore(backend),
     settings: new SettingsStore(backend),
+    saved: new SavedStore(backend),
+    automation: new AutomationStore(backend),
+    browserControl: new BrowserControlStore(backend),
     broadcast,
   };
 }
@@ -57,10 +65,10 @@ describe('Doubao 运行时命令处理器（P2 覆盖）', () => {
     });
   });
 
-  it('注册表构造成功即证明 24 个 typed-handler 全覆盖', () => {
+  it('注册表构造成功即证明 34 个 typed-handler 全覆盖', () => {
     // createRuntimeCommandRegistry 内部会校验 TYPED_RUNTIME_COMMAND_TYPES 每个都有 handler，
-    // 缺任一都会抛错使本测试失败。能走到这里即证明覆盖完整。
-    expect(registry.types.length).toBe(24);
+    // 缺任一都会抛错使本测试失败。能走到这里即证明覆盖完整（24 原 + P6 新增 10）。
+    expect(registry.types.length).toBe(34);
   });
 
   it('记忆（笔记型）：SAVE→GET→GET_BY_ID→DELETE→CLEAR 全链路 + 广播', async () => {
@@ -253,5 +261,62 @@ describe('Doubao 运行时命令处理器（P2 覆盖）', () => {
   it('未知命令返回 runtime_command_unknown（不被误判为广播）', async () => {
     const res = await registry.dispatch({ type: 'NON_EXISTENT_CMD' }, context);
     expect(res).toEqual({ ok: false, error: 'runtime_command_unknown' });
+  });
+
+  it('会话历史（P6）：空 → CLEAR 幂等 → 广播', async () => {
+    expect(await registry.dispatch({ type: 'GET_CONVERSATION_HISTORY' }, context)).toEqual([]);
+    broadcast.mockClear();
+    await registry.dispatch({ type: 'CLEAR_CONVERSATION_HISTORY' }, context);
+    expect(broadcast).toHaveBeenCalledWith('CONVERSATION_HISTORY_UPDATED');
+  });
+
+  it('收藏片段（P6）：SAVE→GET→DELETE 全链路 + 广播', async () => {
+    broadcast.mockClear();
+    await registry.dispatch(
+      {
+        type: 'SAVE_SAVED',
+        payload: { title: '片段1', content: '内容', tags: ['t'] },
+      },
+      context,
+    );
+    expect(broadcast).toHaveBeenCalledWith('SAVED_UPDATED');
+    const list = (await registry.dispatch({ type: 'GET_SAVED' }, context)) as Array<{ id: string; title: string }>;
+    expect(list).toHaveLength(1);
+    const id = list[0].id;
+
+    broadcast.mockClear();
+    await registry.dispatch({ type: 'DELETE_SAVED', payload: { id } }, context);
+    expect(broadcast).toHaveBeenCalledWith('SAVED_UPDATED');
+    expect(await registry.dispatch({ type: 'GET_SAVED' }, context)).toEqual([]);
+  });
+
+  it('自动化规则（P6）：CREATE→GET→DELETE 全链路 + 广播', async () => {
+    broadcast.mockClear();
+    await registry.dispatch(
+      {
+        type: 'CREATE_AUTOMATION',
+        payload: { name: '规则A', description: 'd', enabled: true, trigger: 'manual', action: 'injectContext', actionParam: '' },
+      },
+      context,
+    );
+    expect(broadcast).toHaveBeenCalledWith('AUTOMATIONS_UPDATED');
+    const list = (await registry.dispatch({ type: 'GET_AUTOMATIONS' }, context)) as Array<{ id: string }>;
+    expect(list).toHaveLength(1);
+    const id = list[0].id;
+
+    broadcast.mockClear();
+    await registry.dispatch({ type: 'DELETE_AUTOMATION', payload: { id } }, context);
+    expect(broadcast).toHaveBeenCalledWith('AUTOMATIONS_UPDATED');
+    expect(await registry.dispatch({ type: 'GET_AUTOMATIONS' }, context)).toEqual([]);
+  });
+
+  it('浏览器控制（P6）：默认 false → SET true → GET 往返', async () => {
+    const initial = (await registry.dispatch({ type: 'GET_BROWSER_CONTROL' }, context)) as { enabled: boolean };
+    expect(initial.enabled).toBe(false);
+    broadcast.mockClear();
+    await registry.dispatch({ type: 'SET_BROWSER_CONTROL', payload: { enabled: true } }, context);
+    expect(broadcast).toHaveBeenCalledWith('BROWSER_CONTROL_UPDATED');
+    const next = (await registry.dispatch({ type: 'GET_BROWSER_CONTROL' }, context)) as { enabled: boolean };
+    expect(next.enabled).toBe(true);
   });
 });

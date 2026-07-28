@@ -17,6 +17,8 @@ import {
 } from '../../core/messaging/runtime-command-registry.ts';
 import {
   chromeStorageBackend,
+  MemoryStore,
+  type MemoryEntry,
 } from '../../core/memory/store.ts';
 import {
   UserMemoryStore,
@@ -26,6 +28,9 @@ import { McpStore, type McpToolEntry } from '../../core/mcp/store.ts';
 import { ProjectStore, type ProjectInput, type ProjectEntry } from '../../core/project/store.ts';
 import { PresetStore, type PresetInput, type PresetEntry } from '../../core/preset/store.ts';
 import { SettingsStore, type PluginSettings, type SettingsPatch } from '../../core/settings/store.ts';
+import { SavedStore, type SavedSnippet, type SavedSnippetInput } from '../../core/saved/store.ts';
+import { AutomationStore, type AutomationRule, type AutomationRuleInput } from '../../core/automation/store.ts';
+import { BrowserControlStore } from '../../core/browser-control/store.ts';
 import type {
   SaveMemoryPayload,
   DeleteByIdCommand,
@@ -36,9 +41,14 @@ import type {
   SavePresetCommand,
   SetActivePresetCommand,
   UpdateConfigCommand,
+  SaveSavedCommand,
+  CreateAutomationCommand,
+  SetBrowserControlCommand,
 } from '../../core/messaging/runtime-command-contracts.ts';
 
 export interface DoubaoRuntimeHandlerDependencies {
+  /** 对话记忆（自动抓取，响应会话历史命令，与笔记型记忆并存两套） */
+  memory: MemoryStore;
   /** 用户笔记型记忆（方案 A：与对话记忆 MemoryEntry 并存两套） */
   userMemory: UserMemoryStore;
   mcp: McpStore;
@@ -46,6 +56,12 @@ export interface DoubaoRuntimeHandlerDependencies {
   project: ProjectStore;
   preset: PresetStore;
   settings: SettingsStore;
+  /** 收藏片段（P6） */
+  saved: SavedStore;
+  /** 自动化规则（P6） */
+  automation: AutomationStore;
+  /** 浏览器控制开关（P6，默认关闭） */
+  browserControl: BrowserControlStore;
   /** 变更广播（必填；后台接线时注入 broadcastRuntimeUpdate 封装，测试可注入 no-op 捕获）。 */
   broadcast: (type: string) => void;
 }
@@ -273,6 +289,105 @@ export function createDoubaoRuntimeHandlers(
       deps.settings.resetSettings() as Promise<TypedRuntimeCommandResponse<'RESET_CONFIG'>>,
   );
 
+  // —— 会话历史（P6：复用对话记忆 store） ——
+  const getConversationHistory = definePayloadlessRuntimeCommandHandler(
+    'GET_CONVERSATION_HISTORY',
+    (_context: RuntimeMessageContext) =>
+      deps.memory.getAll() as Promise<TypedRuntimeCommandResponse<'GET_CONVERSATION_HISTORY'>>,
+  );
+
+  const clearConversationHistory = definePayloadlessRuntimeCommandHandler(
+    'CLEAR_CONVERSATION_HISTORY',
+    async () => {
+      await deps.memory.clear();
+      emit('CONVERSATION_HISTORY_UPDATED');
+      return { ok: true };
+    },
+  );
+
+  // —— 收藏片段（P6） ——
+  const getSaved = definePayloadlessRuntimeCommandHandler(
+    'GET_SAVED',
+    (_context: RuntimeMessageContext) =>
+      deps.saved.getAll() as Promise<TypedRuntimeCommandResponse<'GET_SAVED'>>,
+  );
+
+  const saveSaved = defineRuntimeCommandHandler<'SAVE_SAVED', SaveSavedCommand>({
+    type: 'SAVE_SAVED',
+    decode: (message) => message.payload as SaveSavedCommand,
+    handle: async (request) => {
+      const { id, ...input } = request;
+      if (id) {
+        await deps.saved.update(id, input);
+      } else {
+        await deps.saved.create(input);
+      }
+      emit('SAVED_UPDATED');
+      return { ok: true };
+    },
+  });
+
+  const deleteSaved = defineRuntimeCommandHandler<'DELETE_SAVED', DeleteByIdCommand>({
+    type: 'DELETE_SAVED',
+    decode: (message) => message.payload as DeleteByIdCommand,
+    handle: async (request) => {
+      await deps.saved.remove(request.id);
+      emit('SAVED_UPDATED');
+      return { ok: true };
+    },
+  });
+
+  // —— 自动化规则（P6） ——
+  const getAutomations = definePayloadlessRuntimeCommandHandler(
+    'GET_AUTOMATIONS',
+    (_context: RuntimeMessageContext) =>
+      deps.automation.getAll() as Promise<TypedRuntimeCommandResponse<'GET_AUTOMATIONS'>>,
+  );
+
+  const createAutomation = defineRuntimeCommandHandler<'CREATE_AUTOMATION', CreateAutomationCommand>({
+    type: 'CREATE_AUTOMATION',
+    decode: (message) => message.payload as CreateAutomationCommand,
+    handle: async (request) => {
+      const { id, ...input } = request;
+      if (id) {
+        await deps.automation.update(id, input);
+      } else {
+        await deps.automation.create(input);
+      }
+      emit('AUTOMATIONS_UPDATED');
+      return { ok: true };
+    },
+  });
+
+  const deleteAutomation = defineRuntimeCommandHandler<'DELETE_AUTOMATION', DeleteByIdCommand>({
+    type: 'DELETE_AUTOMATION',
+    decode: (message) => message.payload as DeleteByIdCommand,
+    handle: async (request) => {
+      await deps.automation.remove(request.id);
+      emit('AUTOMATIONS_UPDATED');
+      return { ok: true };
+    },
+  });
+
+  // —— 浏览器控制（P6，默认关闭） ——
+  const getBrowserControl = definePayloadlessRuntimeCommandHandler(
+    'GET_BROWSER_CONTROL',
+    (_context: RuntimeMessageContext) =>
+      deps.browserControl.getEnabled().then((enabled) => ({ enabled })) as Promise<
+        TypedRuntimeCommandResponse<'GET_BROWSER_CONTROL'>
+      >,
+  );
+
+  const setBrowserControl = defineRuntimeCommandHandler<'SET_BROWSER_CONTROL', SetBrowserControlCommand>({
+    type: 'SET_BROWSER_CONTROL',
+    decode: (message) => message.payload as SetBrowserControlCommand,
+    handle: async (request) => {
+      await deps.browserControl.setEnabled(request.enabled);
+      emit('BROWSER_CONTROL_UPDATED');
+      return { ok: true };
+    },
+  });
+
   return [
     // 记忆
     getMemories,
@@ -304,6 +419,20 @@ export function createDoubaoRuntimeHandlers(
     getConfig,
     updateConfig,
     resetConfig,
+    // 会话历史（P6）
+    getConversationHistory,
+    clearConversationHistory,
+    // 收藏片段（P6）
+    getSaved,
+    saveSaved,
+    deleteSaved,
+    // 自动化规则（P6）
+    getAutomations,
+    createAutomation,
+    deleteAutomation,
+    // 浏览器控制（P6）
+    getBrowserControl,
+    setBrowserControl,
   ];
 }
 
@@ -312,12 +441,16 @@ export function createDefaultDoubaoRuntimeDependencies(
   broadcast: (type: string) => void,
 ): DoubaoRuntimeHandlerDependencies {
   return {
+    memory: new MemoryStore(chromeStorageBackend),
     userMemory: new UserMemoryStore(chromeStorageBackend),
     skill: new SkillStore(chromeSyncStorageBackend),
     mcp: new McpStore(chromeStorageBackend),
     project: new ProjectStore(chromeStorageBackend),
     preset: new PresetStore(chromeStorageBackend),
     settings: new SettingsStore(chromeStorageBackend),
+    saved: new SavedStore(chromeStorageBackend),
+    automation: new AutomationStore(chromeStorageBackend),
+    browserControl: new BrowserControlStore(chromeStorageBackend),
     broadcast,
   };
 }
