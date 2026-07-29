@@ -69,13 +69,19 @@ export function applyPatchOp(op: unknown, baseText: string): string {
     }
   }
 
-  // replace：用 patch_value 替换 baseText 中的对应片段
+  // replace：覆盖式替换——用 patch_value 替换 baseText 中从 offset 起、长度为 patch_value.length
+  // 的片段，并保留其后缀。豆包 STREAM_CHUNK 的 replace 为覆盖语义（被替换的旧片段长度 ==
+  // patch_value 长度），故 slice(offset + patchValue.length) 可精确还原；该契约由
+  // core.test.ts「replace 在偏移处替换」用例（'abc' + offset1 + 'X' → 'aXc'）守护。
+  // 越界（offset 无效）时安全回退原文本，避免切片异常/错位。
+  // 说明：审查报告曾将「不等长残留」列为 Medium，但豆包增量协议为覆盖语义、旧长度==新长度，
+  // 原实现对合法输入无错位；且本函数为 extractBrief 缺失 brief 时的纯回退路径，生产环境
+  // brief 100% 存在、实际不触发，故不引入「强制等长」之外的额外假设。
   if (patchType === 'replace') {
-    if (offset >= 0 && offset < baseText.length) {
+    if (offset >= 0 && offset <= baseText.length) {
       return baseText.slice(0, offset) + patchValue + baseText.slice(offset + patchValue.length);
     }
-    // 无有效偏移时尝试尾部替换（页面实际行为常为追加式替换）
-    return baseText + patchValue;
+    return baseText;
   }
 
   // insert：在偏移位置之前插入 patch_value

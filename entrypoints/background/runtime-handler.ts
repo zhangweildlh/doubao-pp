@@ -349,6 +349,9 @@ export function createDoubaoRuntimeHandlers(
     decode: (message) => message.payload as CreateAutomationCommand,
     handle: async (request) => {
       const { id, ...input } = request;
+      // 幂等 upsert 语义（Low5）：命令名虽为 CREATE_AUTOMATION，但 payload 携带 id 时按该 id 更新，
+      // 否则新建。v1.11.6.2 自动化为最小闭环（无运行时启停，enabled 由创建决定），前端 save 恒不传 id，
+      // 故实际路径恒为新创建；保留 upsert 仅为契约最小兼容，不破坏 §8 命令命名同构。
       if (id) {
         await deps.automation.update(id, input);
       } else {

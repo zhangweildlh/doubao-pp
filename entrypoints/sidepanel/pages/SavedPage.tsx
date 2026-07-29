@@ -60,7 +60,8 @@ export default function SavedPage() {
         id: editing?.id,
         title: title.trim(),
         content: content.trim(),
-        tags: [],
+        // 保留原标签：编辑既有收藏时沿用其 tags，新建时为空；避免静默清空（Low1）。
+        tags: editing?.tags ?? [],
       };
       await sidepanelRuntimeClient.request({ type: 'SAVE_SAVED', payload: input } as never);
       banner.show('success', t('sidepanel.saved.created'));
@@ -81,8 +82,13 @@ export default function SavedPage() {
       cancelLabel: t('common.cancel'),
     });
     if (!ok) return;
-    await sidepanelRuntimeClient.request({ type: 'DELETE_SAVED', payload: { id: snippet.id } } as never);
-    await reload();
+    try {
+      await sidepanelRuntimeClient.request({ type: 'DELETE_SAVED', payload: { id: snippet.id } } as never);
+      await reload();
+    } catch {
+      // 删除失败仍保留列表并提示，避免静默 reload 致 UI 与存储不一致（Low2）。
+      banner.show('error', t('sidepanel.settings.saveFailed'));
+    }
   };
 
   const inputStyle = {

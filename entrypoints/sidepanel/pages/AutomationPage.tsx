@@ -117,8 +117,13 @@ export default function AutomationPage() {
       cancelLabel: t('common.cancel'),
     });
     if (!ok) return;
-    await sidepanelRuntimeClient.request({ type: 'DELETE_AUTOMATION', payload: { id: rule.id } } as never);
-    await reload();
+    try {
+      await sidepanelRuntimeClient.request({ type: 'DELETE_AUTOMATION', payload: { id: rule.id } } as never);
+      await reload();
+    } catch {
+      // 删除失败仍保留列表并提示，避免静默 reload 致 UI 与存储不一致（Low3，与 SavedPage 同构 §8）。
+      banner.show('error', t('sidepanel.settings.saveFailed'));
+    }
   };
 
   return (

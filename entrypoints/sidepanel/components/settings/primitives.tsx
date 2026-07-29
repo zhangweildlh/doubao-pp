@@ -1,5 +1,5 @@
 import type React from 'react';
-import { useRef, useState, type ReactNode } from 'react';
+import { useRef, useState, useEffect, type ReactNode } from 'react';
 import { StatusMessage } from './feedback-primitives';
 
 // 移植自 Deepseek-pp（§8 可搬运资产：设置页/通用 UI 基础件，品牌无关，仅依赖共享 --ds-* 变量）。
@@ -405,6 +405,11 @@ export function Spinner({ className = 'w-3 h-3' }: { className?: string }) {
 export function useBanner(dismissMs = 4000) {
   const [banner, setBanner] = useState<{ tone: 'success' | 'error' | 'warning' | 'info'; text: string } | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // 卸载时清理未触发的自动消失定时器，避免组件卸载后对已卸载状态调用 setBanner（Low4）。
+  useEffect(() => () => {
+    if (timer.current) clearTimeout(timer.current);
+  }, []);
 
   const show = (tone: 'success' | 'error' | 'warning' | 'info', text: string) => {
     if (timer.current) clearTimeout(timer.current);

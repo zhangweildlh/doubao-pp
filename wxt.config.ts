@@ -43,14 +43,12 @@ export function createManifest(env: ConfigEnv): UserManifest {
     name: MANIFEST_NAME,
     description: MANIFEST_DESCRIPTION,
     version: extensionVersion,
-    // 保留 storage；新增命令总线与 sidePanel 所需权限（与 Deepseek-pp 同构）。
+    // §8 parity 保留：storage / nativeMessaging(shell-host) / identity(OAuth 预留) /
+    // sidePanel(13 页面) / tabs(真实使用)。移除源码零使用的 alarms/contextMenus/
+    // offscreen/debugger（grep 已确认仅在 node_modules 类型定义命中），收敛权限面。
     permissions: [
       'storage',
-      'alarms',
       'nativeMessaging',
-      'contextMenus',
-      'offscreen',
-      'debugger',
       'tabs',
       'identity',
       'sidePanel',
